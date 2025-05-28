@@ -118,18 +118,17 @@ const addNewPatient = async (req, res) => {
       },
       type: QueryTypes.INSERT
     });
-
+    console.log("INSERT id ", insertResult);
     // Step 2: Get the last inserted patient_id
-    const [[{ lastId }]] = await sequelize.query(`SELECT LAST_INSERT_ID() as lastId`);
-
+    // const [[{ lastId }]] = await sequelize.query(`SELECT LAST_INSERT_ID() as lastId`);
     // Step 3: Generate and update patient_code
-    const patientCode = `PAT${String(lastId).padStart(5, '0')}`;
+    const patientCode = `PAT${String(insertResult).padStart(5, '0')}`;
     await sequelize.query(
       `UPDATE tele_patient SET patient_code = :code WHERE patient_id = :id`,
       {
         replacements: {
           code: patientCode,
-          id: lastId
+          id: insertResult
         },
         type: QueryTypes.UPDATE
       }
@@ -138,7 +137,7 @@ const addNewPatient = async (req, res) => {
     res.status(200).json({
       message: 'New patient added successfully',
       data: {
-        patient_id: lastId,
+        patient_id: insertResult,
         patient_code: patientCode
       }
     });

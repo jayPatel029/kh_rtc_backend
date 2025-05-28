@@ -68,7 +68,7 @@ const addOrUpdateVitals = async (req, res) => {
       VALUES (
         :appointment_id, :patient_id, :height, :heightUnit, :weight, :temperature, :temperatureUnit, 
         :blood_pressure, :bloodPressureUnit, :blood_sugar, :bloodSugarUnit, :spO2, 
-        :pulse_rate, :otherName, :otherValue
+        :pulse_rate, :other, :otherValue
       )
       ON DUPLICATE KEY UPDATE
       height = VALUES(height),
@@ -101,8 +101,8 @@ const addOrUpdateVitals = async (req, res) => {
           bloodSugarUnit,
           spO2,
           pulse_rate,
-          otherName,
-          otherValue,
+          other: otherName ?? null,
+          otherValue:  otherValue ?? null,
         },
         type: QueryTypes.INSERT,
       }

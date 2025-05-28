@@ -1,4 +1,10 @@
 const { sequelize } = require("../config/database");
+const csv = require('csv-parser');
+const fs = require('fs');
+const path = require('path');
+const multer = require('multer');
+const { QueryTypes } = require("sequelize");
+const upload = multer({ dest: 'uploads/' }); // multer setup
 
 // Get template IDs
 const getTemplateIds = async (req, res) => {
@@ -682,6 +688,94 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
   }
 };
 
+
+
+const languageMap = {
+  Hindi: 'hi',
+  Bengali: 'bn',
+  Marathi: 'mr',
+  Telugu: 'te',
+  Tamil: 'ta',
+  Gujarati: 'gu',
+  Assamese: 'as',
+  Kannada: 'kn',
+  Malayalam: 'ml',
+  Punjabi: 'pa',
+};
+
+const uploadAdvices = async (req, res) => {
+  const file = req.file;
+  if (!file) return res.status(400).json({ error: 'CSV file is required.' });
+
+  const filePath = path.join(__dirname, '../', file.path);
+  const adviceRows = [];
+
+  fs.createReadStream(filePath)
+    .pipe(csv({
+      mapHeaders: ({ header }) => header.trim() // ✅ Trim all column headers
+    }))
+    .on('data', (row) => {
+      adviceRows.push(row);
+    })
+    .on('end', async () => {
+      try {
+        for (const row of adviceRows) {
+          const englishAdvice = row["Advice (English)"]?.trim();
+
+          if (!englishAdvice) {
+            console.warn("Skipping row with missing English advice:", row);
+            continue;
+          }
+
+          // Insert English advice
+          const [insertResult] = await sequelize.query(
+            `
+            INSERT INTO tele_advice (advice_text)
+            VALUES (:advice_text)
+          `,
+            {
+              replacements: { advice_text: englishAdvice },
+              type: QueryTypes.INSERT,
+            }
+          );
+
+          const adviceId = insertResult;
+
+          // Insert translations (can be empty/null)
+          for (const [language, langCode] of Object.entries(languageMap)) {
+            const translation = row[language]?.trim() || null;
+
+            await sequelize.query(
+              `
+              INSERT INTO tele_advice_translations (advice_id, language_code, translation)
+              VALUES (:advice_id, :language_code, :translation)
+              `,
+              {
+                replacements: {
+                  advice_id: adviceId,
+                  language_code: langCode,
+                  translation,
+                },
+                type: QueryTypes.INSERT,
+              }
+            );
+          }
+        }
+
+        fs.unlinkSync(filePath);
+        res.status(200).json({ message: 'Advice data uploaded successfully.' });
+      } catch (err) {
+        console.error('Error inserting data:', err);
+        res.status(500).json({ error: 'Error inserting data.' });
+      }
+    });
+};
+
+
+
+
+
+
 module.exports = {
   getTemplateIds,
   updateTemplateId,
@@ -693,4 +787,5 @@ module.exports = {
   addOrUpdateAdvice,
   addOrUpdateComplaints,
   saveOrUpdateCompletePrescription,
+  uploadAdvices,
 };

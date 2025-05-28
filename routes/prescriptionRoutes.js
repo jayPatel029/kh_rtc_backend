@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const prescriptionController = require('../controllers/prescriptionController');
+const upload = require('../middleware/upload');
 
 // Get template IDs
 router.get('/templateIds', prescriptionController.getTemplateIds);
@@ -15,5 +16,9 @@ router.get('/templates/:templateId', prescriptionController.getPrescriptionByTem
 // router.post('/', prescriptionController.addPrescription);
 
 router.post('/create', prescriptionController.saveOrUpdateCompletePrescription);
+
+
+router.post('/uploadAdvices', upload.single('file'),prescriptionController.uploadAdvices);
+
 
 module.exports = router; 

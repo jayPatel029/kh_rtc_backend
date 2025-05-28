@@ -65,10 +65,11 @@ const sendMail = async (req, res) => {
 const VerifyOtp = async (req, res) => {
     const { email, otp } = req.body;
     const parsedOTP = parseInt(otp);
+    console.log('Request body:', req.body);
   try {
-    const rows = await pool.query(
+    const rows = await sequelize.query(
       'SELECT * FROM mail_otp WHERE email = ? ORDER BY timestamp DESC LIMIT 1',
-      [email]
+      {replacements: [email], type: sequelize.QueryTypes.SELECT }
     );
 
     if (rows.length === 0) {

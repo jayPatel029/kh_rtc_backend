@@ -238,4 +238,4 @@ module.exports = {
   getAdviceTemplateIds,
   updateAdviceTemplateId,
   getAdviceByTemplateId
-}; 
+};

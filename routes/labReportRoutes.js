@@ -6,7 +6,7 @@ const labReportController = require('../controllers/labReportController');
 router.post('/add', labReportController.addLabReport);
 
 // Get lab reports by patient ID
-router.get('/getLabReports/:patientId', labReportController.getLabReportsByPatientId);
+router.get('/getLabReports/:patientId', labReportController.getLabReports);
 
 // Delete lab report
 router.delete('/deleteLabReport/:id', labReportController.deleteLabReport);
