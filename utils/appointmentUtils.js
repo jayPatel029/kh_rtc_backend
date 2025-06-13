@@ -2,7 +2,6 @@ const { QueryTypes } = require("sequelize");
 const { sequelize, pool } = require("../config/database");
 const e = require("express");
 
-
 const rearrangeBookingTimes = async (emergencyAppointmentId) => {
   try {
     console.log(
@@ -81,9 +80,7 @@ const rearrangeBookingTimes = async (emergencyAppointmentId) => {
       if (slotIndex >= availableSlots.length) break;
 
       const newTime = availableSlots[slotIndex];
-      console.log(
-        `Reassigning appointment_id ${appointment.id} to ${newTime}`
-      );
+      console.log(`Reassigning appointment_id ${appointment.id} to ${newTime}`);
 
       await sequelize.query(
         `UPDATE tele_appointments SET appointment_time = :time WHERE id = :id`,
@@ -103,11 +100,82 @@ const rearrangeBookingTimes = async (emergencyAppointmentId) => {
   }
 };
 
+// const generateTimeSlots = async (doctor_id) => {
+//   try {
+//     console.log("generating time slots:", doctor_id);
 
-const generateTimeSlots = async (doctor_id) => {
+//     const result = await sequelize.query(
+//       `SELECT opd_timing, slot_duration FROM tele_doctor WHERE id = ?`,
+//       {
+//         replacements: [doctor_id],
+//         type: sequelize.QueryTypes.SELECT,
+//       }
+//     );
+
+//     console.log("result: ", result);
+
+//     if (!result || result.length === 0) {
+//       throw new Error("Doctor not found or missing schedule info!!");
+//     }
+
+//     const { opd_timing, slot_duration } = result[0];
+
+//     if (!opd_timing || !slot_duration) {
+//       throw new Error("Missing timing or slot duration");
+//     }
+
+//     // Parse the JSON opd_timing
+//     const opdSchedule = JSON.parse(opd_timing);
+
+//     // Get today's weekday
+//     const weekdays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+//     const today = weekdays[new Date().getDay()];
+
+//     // Get today's timing
+//     const todayTiming = opdSchedule[today];
+
+//     if (!todayTiming) {
+//       console.log("Doctor doesn't work on", today);
+//       return [];
+//     }
+
+//     const [startTime, endTime] = todayTiming.replace(/\s+/g, "").split("-");
+//     const timeSlot = parseInt(slot_duration, 10);
+
+//     const [startHour, startMin] = startTime.split(":").map(Number);
+//     const [endHour, endMin] = endTime.split(":").map(Number);
+
+//     const slots = [];
+
+//     let current = new Date();
+//     current.setHours(startHour, startMin, 0, 0);
+
+//     const end = new Date();
+//     end.setHours(endHour, endMin, 0, 0);
+
+//     const format = (date) => date.toTimeString().slice(0, 5);
+
+//     while (current < end) {
+//       const slotStart = new Date(current);
+//       const slotEnd = new Date(current.getTime() + timeSlot * 60000);
+
+//       if (slotEnd > end) break;
+
+//       slots.push(format(slotStart)); // Push only the start time
+//       current = slotEnd;
+//     }
+
+//     console.log("time slots for", today, ":", slots);
+//     return slots;
+//   } catch (err) {
+//     console.error("Error generating time slots!!:", err);
+//     throw err;
+//   }
+// };
+
+const generateTimeSlots = async (doctor_id, date = null) => {
   try {
-    console.log("generating time slots:", doctor_id);
-
+    // Step 1: Get doctor's timing info
     const result = await sequelize.query(
       `SELECT opd_timing, slot_duration FROM tele_doctor WHERE id = ?`,
       {
@@ -115,8 +183,6 @@ const generateTimeSlots = async (doctor_id) => {
         type: sequelize.QueryTypes.SELECT,
       }
     );
-
-    console.log("result: ", result);
 
     if (!result || result.length === 0) {
       throw new Error("Doctor not found or missing schedule info!!");
@@ -128,18 +194,23 @@ const generateTimeSlots = async (doctor_id) => {
       throw new Error("Missing timing or slot duration");
     }
 
-    // Parse the JSON opd_timing
     const opdSchedule = JSON.parse(opd_timing);
-    
-    // Get today's weekday
-    const weekdays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    const today = weekdays[new Date().getDay()];
-    
-    // Get today's timing
-    const todayTiming = opdSchedule[today];
-    
+    const weekdays = [
+      "sunday",
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday",
+      "saturday",
+    ];
+
+    const targetDate = date ? new Date(date) : new Date();
+    const weekdayName = weekdays[targetDate.getDay()];
+    const todayTiming = opdSchedule[weekdayName];
+
     if (!todayTiming) {
-      console.log("Doctor doesn't work on", today);
+      console.log(`Doctor doesn't work on ${weekdayName}`);
       return [];
     }
 
@@ -150,11 +221,10 @@ const generateTimeSlots = async (doctor_id) => {
     const [endHour, endMin] = endTime.split(":").map(Number);
 
     const slots = [];
-
-    let current = new Date();
+    const current = new Date(targetDate);
     current.setHours(startHour, startMin, 0, 0);
 
-    const end = new Date();
+    const end = new Date(targetDate);
     end.setHours(endHour, endMin, 0, 0);
 
     const format = (date) => date.toTimeString().slice(0, 5);
@@ -166,11 +236,49 @@ const generateTimeSlots = async (doctor_id) => {
       if (slotEnd > end) break;
 
       slots.push(format(slotStart)); // Push only the start time
-      current = slotEnd;
+      current.setTime(slotEnd.getTime()); // advance to next slot
     }
 
-    console.log("time slots for", today, ":", slots);
-    return slots;
+    // Step 2: Get already booked slots for that date
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const appointments = await sequelize.query(
+      `SELECT appointment_time FROM tele_appointments 
+       WHERE doctor_id = ? AND appointment_date BETWEEN ? AND ?`,
+      {
+        replacements: [doctor_id, startOfDay, endOfDay],
+        type: sequelize.QueryTypes.SELECT,
+      }
+    );
+
+    const bookedSlots = appointments.map((appt) => {
+      const [hh, mm] = appt.appointment_time.split(":");
+      return `${hh}:${mm}`;
+    });
+
+    // Step 3: Remove past slots only if targetDate is today
+    let filteredSlots = slots;
+    const isToday = new Date().toDateString() === targetDate.toDateString();
+    if (isToday) {
+      const now = new Date();
+      const nowTime = now.getHours() * 60 + now.getMinutes();
+
+      filteredSlots = slots.filter((slot) => {
+        const [hh, mm] = slot.split(":").map(Number);
+        const slotTime = hh * 60 + mm;
+        return slotTime > nowTime;
+      });
+    }
+
+    // Step 4: Remove booked slots
+    const availableSlots = filteredSlots.filter((slot) => !bookedSlots.includes(slot));
+
+    console.log("Available time slots for", weekdayName, ":", availableSlots);
+    return availableSlots;
   } catch (err) {
     console.error("Error generating time slots!!:", err);
     throw err;
@@ -180,7 +288,10 @@ const generateTimeSlots = async (doctor_id) => {
 
 const rearrangeForNoShow = async (noShowAppointmentId) => {
   try {
-    console.log("Rearranging due to no-show for appointment:", noShowAppointmentId);
+    console.log(
+      "Rearranging due to no-show for appointment:",
+      noShowAppointmentId
+    );
 
     // Fetch no-show appointment details
     const [noShowAppt] = await sequelize.query(
@@ -202,7 +313,9 @@ const rearrangeForNoShow = async (noShowAppointmentId) => {
     );
 
     // Find the position of the no-show appointment in sorted list
-    const noShowIndex = allAppointments.findIndex(appt => appt.id === noShowAppointmentId);
+    const noShowIndex = allAppointments.findIndex(
+      (appt) => appt.id === noShowAppointmentId
+    );
 
     if (noShowIndex === -1) {
       console.warn("No-show appointment not found in today's list.");
@@ -231,10 +344,15 @@ const rearrangeForNoShow = async (noShowAppointmentId) => {
 
       await sequelize.query(
         `UPDATE tele_appointments SET appointment_time = ? WHERE id = ?`,
-        { replacements: [prevAppt.appointment_time, currentAppt.id], type: QueryTypes.UPDATE }
+        {
+          replacements: [prevAppt.appointment_time, currentAppt.id],
+          type: QueryTypes.UPDATE,
+        }
       );
 
-      console.log(`Shifted appointment ${currentAppt.id} to slot ${prevAppt.appointment_time}`);
+      console.log(
+        `Shifted appointment ${currentAppt.id} to slot ${prevAppt.appointment_time}`
+      );
     }
 
     // Optional: Mark no-show appointment slot as free or cancelled (depending on your logic)
@@ -243,7 +361,6 @@ const rearrangeForNoShow = async (noShowAppointmentId) => {
       { replacements: [noShowAppointmentId], type: QueryTypes.UPDATE }
     );
     console.log(`Marked no-show appointment ${noShowAppointmentId} as missed.`);
-
   } catch (error) {
     console.error("Error rearranging for no-show:", error);
     throw error;

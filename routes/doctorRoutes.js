@@ -25,13 +25,17 @@ router.post(
     { name: "doctor_signature", maxCount: 1 },
     { name: "bar_code", maxCount: 1 },
     { name: "qr_code", maxCount: 1 },
+    { name: "letterhead", maxCount: 1 },
   ]),
   doctorController.uploadDoctorFiles
 );
 
-router.get('/getSlots/:id', async (req, res) => {
+router.get('/getSlots', async (req, res) => {
+  const docId = req.query.id;
+  const date = req.query.date || null;
+
   try {
-    const slots = await generateTimeSlots(req.params.id);
+    const slots = await generateTimeSlots(docId,date);
     res.json({ slots });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -47,8 +51,8 @@ router.get("/getDoctorsByClinic", doctorController.getDoctorsByClinic);
 //!! routes below this reqires auth!!!
 router.use(authenticate);
 
-router.get("/all", authorizeRoles('admin'), doctorController.getDoctors);
-router.delete("/delete/:doctor_id", authorizeRoles('admin'),doctorController.deleteDoctor);
+router.get("/all",  doctorController.getDoctors);
+router.delete("/delete/:doctor_id", doctorController.deleteDoctor);
 
 
 

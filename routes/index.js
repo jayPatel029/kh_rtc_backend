@@ -15,6 +15,8 @@ const adminRoutes = require('../routes/adminRoutes');
 const reportRoutes = require('./reportsRoutes');
 const clinicRoutes = require('./clinicRoutes');
 const labRoutes = require('./labReportRoutes');
+const chatRoutes = require('./chatRoutes');
+const moduleRoutes = require('./moduleRoutes');
 // const scheduleMeet = require('../utils/calendarService');
 
 // Mount all routes
@@ -31,6 +33,8 @@ router.use('/admin',adminRoutes);
 router.use('/report',reportRoutes);
 router.use('/clinic',clinicRoutes);
 router.use('/lab',labRoutes);
+router.use('/chat',chatRoutes);
+router.use('/connectModule',moduleRoutes);
 // router.use('/meet',scheduleMeet);
 
 

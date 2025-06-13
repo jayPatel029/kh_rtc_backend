@@ -61,8 +61,8 @@ const verifyMailTemplate = (OTP) => {
         </head>
         <body>
             <div class="container">
-                <img src="https://kifaytidata2024.s3.ap-south-1.amazonaws.com/kifayti_logo.png" alt="Kifayti Health RTC Logo" class="logo">
-                <h1>Kifayti Health RTC</h1>
+                <img src="https://kifaytidata2024.s3.ap-south-1.amazonaws.com/kifayti_logo.png" alt="Kifayti Health - Teleconsultation Logo" class="logo">
+                <h1>Kifayti Health - Teleconsultation</h1>
                 <p>Please use the following OTP to verify your email address:</p>
                 <div class="otp">${OTP}</div>
                 <div class="footer">This OTP will expire in 10 minutes. Do not share it with anyone.</div>

@@ -21,42 +21,15 @@ app.use(express.json());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use('/uploads', express.static('uploads'));
+const morgan = require("morgan");
+app.use(morgan("combined")); // logs requests
+const helmet = require('helmet');
+app.use(helmet());
 
 // Mount all routes
-app.use('/api', routes);
-
-// app.post('/api/schedule-meeting', async (req, res) => {
-//   try {
-//     const { doctorEmail, patientEmail, start, end, timeZone, title, description } = req.body;
-
-//     // Build eventData with attendees
-//     const eventData = {
-//       summary: title,
-//       description,
-//       start,
-//       end,
-//       timeZone,
-//       attendees: [
-//         { email: doctorEmail },
-//         { email: patientEmail }
-//       ]
-//     };
-
-//     const event = await createGoogleMeetEvent(eventData);
-
-//     res.json({
-//       message: 'Meeting scheduled successfully!',
-//       meetLink: event.conferenceData.entryPoints[0].uri,
-//       calendarEventLink: event.htmlLink
-//     });
-//   } catch (error) {
-//     console.error('Error:', error.message);
-//     res.status(500).json({ error: 'Failed to schedule meeting.' });
-//   }
-// });
+app.use('/api/app2', routes);
 
 
-// Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({ error: 'Something went wrong!' });

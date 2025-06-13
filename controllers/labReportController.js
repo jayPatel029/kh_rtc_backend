@@ -1,10 +1,14 @@
-const { sequelize, pool } = require('../config/database');
-const { QueryTypes } = require('sequelize');
+const { sequelize, pool } = require("../config/database");
+const { QueryTypes } = require("sequelize");
 
 // Add lab report
 const addLabReport = async (req, res) => {
   try {
-    const { Report_Type, Lab_Report, Date, patient_id } = req.body;
+    const { Report_Type, Date, patient_id } = req.body;
+    const Lab_Report = `/uploads/${req.file?.filename}`;
+    if (!Lab_Report) {
+      return res.status(400).json({ error: "Lab_Report file is required" });
+    }
 
     await sequelize.query(
       `
@@ -49,7 +53,6 @@ const getLabReports = async (req, res) => {
   }
 };
 
-
 const deleteLabReport = async (req, res) => {
   try {
     const { id } = req.params;
@@ -74,5 +77,5 @@ const deleteLabReport = async (req, res) => {
 module.exports = {
   addLabReport,
   getLabReports,
-  deleteLabReport
-}; 
+  deleteLabReport,
+};

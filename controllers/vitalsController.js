@@ -3,11 +3,11 @@ const { QueryTypes } = require("sequelize");
 
 // Get vitals by appointment ID
 const getVitalsByAppointmentId = async (req, res) => {
-  const { appointment_id } = req.params;
+  const { appointment_id } = req.query;
 
   try {
     const results = await sequelize.query(
-      "SELECT * FROM tele_appointment_vitals WHERE appointment_id = :appointment_id",
+      "SELECT * FROM tele_appointment_vitals WHERE appointment_id = :appointment_id ORDER BY id DESC LIMIT 1",
       {
         replacements: { appointment_id },
         type: QueryTypes.SELECT,

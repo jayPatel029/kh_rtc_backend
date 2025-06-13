@@ -236,7 +236,9 @@ const getAppointmentsByDateRangebyClinic = async (req, res) => {
   const { clinic_id, from_date, to_date } = req.body;
 
   if (!clinic_id || !from_date || !to_date) {
-    return res.status(400).json({ error: "clinic_id, from_date, and to_date are required" });
+    return res
+      .status(400)
+      .json({ error: "clinic_id, from_date, and to_date are required" });
   }
 
   try {
@@ -275,12 +277,13 @@ const getAppointmentsByDateRangebyClinic = async (req, res) => {
   }
 };
 
-
 const getAppointmentsByDateRangeByDoctor = async (req, res) => {
   const { doctor_id, from_date, to_date } = req.body;
 
   if (!doctor_id || !from_date || !to_date) {
-    return res.status(400).json({ error: "doctor_id, from_date, and to_date are required" });
+    return res
+      .status(400)
+      .json({ error: "doctor_id, from_date, and to_date are required" });
   }
 
   try {
@@ -319,17 +322,83 @@ const getAppointmentsByDateRangeByDoctor = async (req, res) => {
   }
 };
 
+const getAppointmentById = async (req, res) => {
+  const { id } = req.query;
 
+  if (!id) {
+    return res.status(400).json({ error: "appointment id is required" });
+  }
 
+  try {
+    const query = `
+      SELECT 
+        apt.*,
+        doc.doctor AS doctor_name,
+        pat.name AS patient_name,
+        pat.phone_no AS patient_phone,
+        cl.clinic_name
+      FROM tele_appointments apt
+      LEFT JOIN tele_doctor doc ON apt.doctor_id = doc.id
+      LEFT JOIN tele_patient pat ON apt.patient_id = pat.patient_id
+      LEFT JOIN tele_clinic cl ON doc.clinic_id = cl.id
+      WHERE apt.id = :id
+    `;
 
-const fetchAllConsultations = async (req, res) => {
-  const { doctor_id } = req.query;
+    const results = await sequelize.query(query, {
+      replacements: { id },
+      type: QueryTypes.SELECT,
+    });
+
+    if (results.length === 0) {
+      return res.status(404).json({ error: "Appointment not found" });
+    }
+
+    const row = results[0];
+
+    const appointment = {
+      id: row.id,
+      doctor_id: row.doctor_id,
+      doctor_name: row.doctor_name,
+      patient_id: row.patient_id,
+      patient_name: row.patient_name,
+      patient_phone: row.patient_phone,
+      clinic_id: row.clinic_id,
+      clinic_name: row.clinic_name,
+      appointment_date: row.appointment_date,
+      appointment_time: row.appointment_time,
+      status: row.status,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    };
+
+    res.json({ success: true, data: appointment });
+  } catch (error) {
+    console.error("Error fetching appointment:", error);
+    res.status(500).json({
+      success: false,
+      error: "An error occurred while fetching the appointment.",
+    });
+  }
+};
+
+const fetchAllConsultationsForDoctor = async (req, res) => {
+  const { doctor_id, from_date, to_date } = req.query;
 
   if (!doctor_id) {
     return res.status(400).json({ error: "doctor_id is required" });
   }
 
   try {
+    let dateCondition = `a.appointment_date = CURDATE()`;
+    const replacements = { doctor_id };
+
+    // Optional date range filtering
+    if (from_date && to_date) {
+      dateCondition = `a.appointment_date BETWEEN :from_date AND :to_date`;
+      replacements.from_date = from_date;
+      replacements.to_date = to_date;
+    }
+
     const appointments = await sequelize.query(
       `
       SELECT 
@@ -347,11 +416,13 @@ const fetchAllConsultations = async (req, res) => {
       FROM tele_appointments a
       JOIN tele_patient p ON a.patient_id = p.patient_id
       WHERE a.doctor_id = :doctor_id
-        AND a.appointment_date = CURDATE()
+        AND ${dateCondition}
+        AND a.status = 'ARRIVED'
+        AND a.payment_action = 'PAID'
       ORDER BY a.appointment_time ASC
     `,
       {
-        replacements: { doctor_id },
+        replacements,
         type: QueryTypes.SELECT,
       }
     );
@@ -360,13 +431,13 @@ const fetchAllConsultations = async (req, res) => {
       appointments.map(async (appt, index) => {
         const [pastVisit] = await sequelize.query(
           `
-        SELECT appointment_date
-        FROM tele_appointments
-        WHERE patient_id = :patient_id
-          AND appointment_date < CURDATE()
-        ORDER BY appointment_date DESC, appointment_time DESC
-        LIMIT 1
-      `,
+          SELECT appointment_date
+          FROM tele_appointments
+          WHERE patient_id = :patient_id
+            AND appointment_date < CURDATE()
+          ORDER BY appointment_date DESC, appointment_time DESC
+          LIMIT 1
+        `,
           {
             replacements: { patient_id: appt.patient_id },
             type: QueryTypes.SELECT,
@@ -381,7 +452,7 @@ const fetchAllConsultations = async (req, res) => {
           patient_name: appt.patient_name,
           age: appt.age,
           gender: appt.gender,
-          phone_no: appt.phone_no, // ✅ Included here
+          phone_no: appt.phone_no,
           past_visit_date: pastVisit ? pastVisit.appointment_date : null,
           appointment_type: appt.appointment_type,
           service: appt.service,
@@ -392,6 +463,132 @@ const fetchAllConsultations = async (req, res) => {
     res.status(200).json({ consultations });
   } catch (err) {
     console.error("Error fetching consultations:", err);
+    res.status(500).json({ error: "Failed to fetch consultations." });
+  }
+};
+
+const countConsultationsForDoctor = async (req, res) => {
+  const { doctor_id, from_date, to_date } = req.query;
+
+  if (!doctor_id) {
+    return res.status(400).json({ error: "doctor_id is required" });
+  }
+
+  try {
+    let dateCondition = `a.appointment_date = CURDATE()`;
+    const replacements = { doctor_id };
+
+    if (from_date && to_date) {
+      dateCondition = `a.appointment_date BETWEEN :from_date AND :to_date`;
+      replacements.from_date = from_date;
+      replacements.to_date = to_date;
+    }
+
+    const [result] = await sequelize.query(
+      `
+      SELECT COUNT(*) AS consultation_count
+      FROM tele_appointments a
+      WHERE a.doctor_id = :doctor_id
+        AND ${dateCondition}
+        AND a.status = 'ARRIVED'
+        AND a.payment_action = 'PAID'
+      `,
+      {
+        replacements,
+        type: QueryTypes.SELECT,
+      }
+    );
+
+    res.status(200).json({ consultation_count: result.consultation_count });
+  } catch (err) {
+    console.error("Error counting consultations:", err);
+    res.status(500).json({ error: "Failed to count consultations." });
+  }
+};
+
+const fetchAllConsultationsForClinic = async (req, res) => {
+  const { clinic_id, from_date, to_date } = req.query;
+
+  if (!clinic_id) {
+    return res.status(400).json({ error: "clinic_id is required" });
+  }
+
+  try {
+    let dateCondition = `a.appointment_date = CURDATE()`;
+    const replacements = { clinic_id };
+
+    // Optional date range filtering
+    if (from_date && to_date) {
+      dateCondition = `a.appointment_date BETWEEN :from_date AND :to_date`;
+      replacements.from_date = from_date;
+      replacements.to_date = to_date;
+    }
+
+    const appointments = await sequelize.query(
+      `
+      SELECT 
+        a.id,
+        a.token_id,
+        p.patient_id,
+        p.patient_code,
+        p.name AS patient_name,
+        p.age,
+        p.gender,
+        p.phone_no,
+        a.appointment_type,
+        a.service,
+        a.appointment_time
+      FROM tele_appointments a
+      JOIN tele_patient p ON a.patient_id = p.patient_id
+      JOIN tele_doctor_clinic dc ON a.doctor_id = dc.doctor_id
+      WHERE dc.clinic_id = :clinic_id
+        AND ${dateCondition}
+        AND a.status = 'ARRIVED'
+        AND a.payment_action = 'PAID'
+      ORDER BY a.appointment_time ASC
+    `,
+      {
+        replacements,
+        type: QueryTypes.SELECT,
+      }
+    );
+
+    const consultations = await Promise.all(
+      appointments.map(async (appt, index) => {
+        const [pastVisit] = await sequelize.query(
+          `
+          SELECT appointment_date
+          FROM tele_appointments
+          WHERE patient_id = :patient_id
+            AND appointment_date < CURDATE()
+          ORDER BY appointment_date DESC, appointment_time DESC
+          LIMIT 1
+        `,
+          {
+            replacements: { patient_id: appt.patient_id },
+            type: QueryTypes.SELECT,
+          }
+        );
+
+        return {
+          queue: index + 1,
+          appointment_id: appt.id,
+          patient_code: appt.patient_code,
+          token_id: appt.token_id,
+          patient_name: appt.patient_name,
+          age: appt.age,
+          gender: appt.gender,
+          phone_no: appt.phone_no,
+          past_visit_date: pastVisit ? pastVisit.appointment_date : null,
+          appointment_type: appt.appointment_type,
+          service: appt.service,
+        };
+      })
+    );
+
+    res.status(200).json({ consultations });
+  } catch (err) {
+    console.error("Error fetching consultations for clinic:", err);
     res.status(500).json({ error: "Failed to fetch consultations." });
   }
 };
@@ -479,8 +676,6 @@ const getPendingAppointments = async (req, res) => {
   }
 };
 
-
-
 const getPendingAppointmentsForClinic = async (req, res) => {
   const { clinic_id, date } = req.query;
 
@@ -502,7 +697,7 @@ const getPendingAppointmentsForClinic = async (req, res) => {
       return res.json({ count: 0 });
     }
 
-    const doctorIdList = doctorIds.map(doc => doc.id);
+    const doctorIdList = doctorIds.map((doc) => doc.id);
 
     // Step 2: Build query to get pending appointments
     let query = `
@@ -529,8 +724,6 @@ const getPendingAppointmentsForClinic = async (req, res) => {
     res.status(500).json({ error: "An error occurred" });
   }
 };
-
-
 
 const getPendingAppointmentsForDoctor = async (req, res) => {
   const { doctor_id, date } = req.query;
@@ -565,8 +758,6 @@ const getPendingAppointmentsForDoctor = async (req, res) => {
   }
 };
 
-
-
 const getCompletedAppointments = async (req, res) => {
   const { date } = req.query;
   try {
@@ -590,8 +781,6 @@ const getCompletedAppointments = async (req, res) => {
     res.status(500).json({ error: "An error occurred" });
   }
 };
-
-
 
 const getCompletedAppointmentsForClinic = async (req, res) => {
   const { clinic_id, date } = req.query;
@@ -643,8 +832,6 @@ const getCompletedAppointmentsForClinic = async (req, res) => {
   }
 };
 
-
-
 const getCompletedAppointmentsForDoctor = async (req, res) => {
   const { doctor_id, date } = req.query;
 
@@ -678,8 +865,6 @@ const getCompletedAppointmentsForDoctor = async (req, res) => {
   }
 };
 
-
-
 const generateTokenId = async (
   doctor_id,
   appointment_date,
@@ -712,6 +897,7 @@ const addAppointment = async (req, res) => {
     appointment_type,
     services,
     isEmergency = 0,
+    referred_by,
   } = req.body;
 
   //todo keep this slot intervels based on the docs slot_time and opd timinig
@@ -746,11 +932,11 @@ const addAppointment = async (req, res) => {
       INSERT INTO tele_appointments (
         patient_id, doctor_id, appointment_date, appointment_time,
         appointment_type, service, unit_price, discount,
-        status, token_id, payment_action, isEmergency
+        status, token_id, payment_action, isEmergency, referred_by
       ) VALUES (
         :patient_id, :doctor_id, :appointment_date, :appointment_time,
         :appointment_type, :service, :unit_price, :discount,
-        'BOOKED', :token_id, 'PENDING', :isEmergency
+        'BOOKED', :token_id, 'PENDING', :isEmergency, :referred_by
       )
     `,
       {
@@ -765,6 +951,7 @@ const addAppointment = async (req, res) => {
           discount: discountsCSV,
           token_id,
           isEmergency,
+          referred_by,
         },
         type: QueryTypes.INSERT,
       }
@@ -918,26 +1105,6 @@ const updatePaymentStatus = async (req, res) => {
     res
       .status(500)
       .json({ error: "An error occurred while updating the payment status." });
-  }
-};
-
-const updatePastAppointments = async (req, res) => {
-  console.log("updating past appointments as 'MISSED'");
-  try {
-    await sequelize.query(
-      `
-      UPDATE tele_appointments 
-      SET status = 'MISSED' 
-      WHERE appointment_date < CURDATE() AND status NOT IN ('COMPLETED', 'MISSED');
-    `,
-      {
-        type: QueryTypes.UPDATE,
-      }
-    );
-
-    console.log("done!!");
-  } catch (err) {
-    console.error("Error updating past tele_appointments:", err);
   }
 };
 
@@ -1095,12 +1262,13 @@ module.exports = {
   getBookedTimes,
   updateStatus,
   updatePaymentStatus,
-  updatePastAppointments,
   deleteAppointment,
   getPastAppointmentsByDoctor,
   getPastAppointmentsByPatient,
   getTodaysAppointmentsByDoctor,
-  fetchAllConsultations,
+  fetchAllConsultationsForDoctor,
+  fetchAllConsultationsForClinic,
+  countConsultationsForDoctor,
   updateAppointmentStatus,
   getTodaysAppointmentsByClinic,
   createBill,
@@ -1111,4 +1279,5 @@ module.exports = {
   getCompletedAppointmentsForClinic,
   getAppointmentsByDateRangebyClinic,
   getAppointmentsByDateRangeByDoctor,
+  getAppointmentById,
 };
