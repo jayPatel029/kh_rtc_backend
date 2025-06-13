@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
-const { connectToDatabase } = require('./config/database');
+const { connectToDatabase, sequelize } = require('./config/database');
 require('dotenv').config(); 
 require('./cronjob/cron_funcitons')
 const routes = require('./routes');
@@ -27,13 +27,58 @@ const helmet = require('helmet');
 app.use(helmet());
 
 // Mount all routes
-app.use('/api/app2', routes);
+app.use('/api', routes);
 
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({ error: 'Something went wrong!' });
 });
+
+
+app.get('/health', async (req, res) => {
+  try {
+    let isDbConnected = false;
+    try {
+      await sequelize.authenticate();
+      isDbConnected = true;
+    } catch (dbError) {
+      isDbConnected = false;
+    }
+
+    const uptime = process.uptime();
+    const memoryUsage = process.memoryUsage();
+
+    res.status(200).json({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      services: {
+        database: isDbConnected ? 'connected' : 'disconnected',
+        server: 'running'
+      },
+      metrics: {
+        uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m ${Math.floor(uptime % 60)}s`,
+        memory: {
+          heapUsed: `${Math.round(memoryUsage.heapUsed / 1024 / 1024)}MB`,
+          heapTotal: `${Math.round(memoryUsage.heapTotal / 1024 / 1024)}MB`
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Health check failed:', error);
+    res.status(500).json({
+      status: 'unhealthy',
+      timestamp: new Date().toISOString(),
+      error: error.message,
+      services: {
+        database: 'error',
+        server: 'running'
+      }
+    });
+  }
+});
+
+
 
 // Initialize database and start server
 const initializeApp = async () => {
