@@ -43,7 +43,6 @@ const addOrUpdateVitals = async (req, res) => {
     pulse_rate,
     otherName,
     otherValue,
-    patient_id,
   } = req.body;
 
   try {

@@ -192,7 +192,6 @@ const createappointmentVitalsTable = async () => {
         pulse_rate INT NULL,  
         other TEXT NULL, 
         othervalue TEXT NULL,
-        FOREIGN KEY (patient_id) REFERENCES tele_patient(patient_id) ON DELETE CASCADE,
         FOREIGN KEY (appointment_id) REFERENCES tele_appointments(id) ON DELETE CASCADE
       );
     `;
@@ -364,7 +363,7 @@ const createPatientClinicTable = async () => {
 const createPrescriptionTable = async () => {
   try {
     const query = `
-      CREATE TABLE IF NOT EXISTS prescription (
+      CREATE TABLE IF NOT EXISTS tele_prescription (
         id INT AUTO_INCREMENT PRIMARY KEY,
         appointment_id INT NULL,
         template_id VARCHAR(50) NULL,
