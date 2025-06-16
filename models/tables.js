@@ -179,6 +179,7 @@ const createappointmentVitalsTable = async () => {
       CREATE TABLE IF NOT EXISTS tele_appointment_vitals (
         id INT AUTO_INCREMENT PRIMARY KEY,
         appointment_id INT NOT NULL,
+        patient_id INT NULL,
         height DECIMAL(5,2) NULL, 
         heightUnit VARCHAR(20) NULL, 
         weight DECIMAL(5,2) NULL,  
@@ -193,6 +194,7 @@ const createappointmentVitalsTable = async () => {
         other TEXT NULL, 
         othervalue TEXT NULL,
         FOREIGN KEY (appointment_id) REFERENCES tele_appointments(id) ON DELETE CASCADE
+        FOREIGN KEY (patient_id) REFERENCES tele_patient(patient_id) ON DELETE CASCADE,
       );
     `;
     await sequelize.query(query);
