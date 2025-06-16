@@ -5,7 +5,7 @@ const authController = require('../controllers/authController');
 const upload = require("../middleware/upload");
 
 router.post("/register", frontDescController.createFrontDesk);
-router.post("/login", frontDescController.loginFrontDesk);
+// router.post("/login", frontDescController.loginFrontDesk);
 
 
 module.exports = router;

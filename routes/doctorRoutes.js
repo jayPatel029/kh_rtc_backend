@@ -11,7 +11,7 @@ const { generateTimeSlots } = require("../utils/appointmentUtils");
 
 // Public routes
 router.post("/register", doctorController.createDoctor);
-router.post("/login", doctorController.loginDoctor);
+// router.post("/login", doctorController.loginDoctor);
 // router.get("/all", doctorController.getDoctors);
 // router.delete("/delete/:doctor_id", doctorController.deleteDoctor);
 

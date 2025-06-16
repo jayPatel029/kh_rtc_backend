@@ -17,8 +17,11 @@ const clinicRoutes = require('./clinicRoutes');
 const labRoutes = require('./labReportRoutes');
 const chatRoutes = require('./chatRoutes');
 const moduleRoutes = require('./moduleRoutes');
+const { unifiedLogin } = require('../controllers/authController');
 // const scheduleMeet = require('../utils/calendarService');
 
+//unified login
+router.post('/login', unifiedLogin);
 // Mount all routes
 router.use('/upload', uploadRoutes);
 router.use('/doctor', doctorRoutes);
