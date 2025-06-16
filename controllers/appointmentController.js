@@ -169,6 +169,7 @@ const getTodaysAppointmentsByDoctor = async (req, res) => {
         a.payment_action,
         a.status AS appointment_status,
         a.appointment_date,
+        a.isEmergency,
         a.id
       FROM tele_appointments a
       JOIN tele_patient p ON a.patient_id = p.patient_id
@@ -211,6 +212,7 @@ const getTodaysAppointmentsByClinic = async (req, res) => {
         a.payment_action,
         a.status AS appointment_status,
         a.appointment_date,
+        a.isEmergency,
         d.doctor AS doctor_name
       FROM tele_appointments a
       JOIN tele_patient p ON a.patient_id = p.patient_id
@@ -256,6 +258,7 @@ const getAppointmentsByDateRangebyClinic = async (req, res) => {
         a.payment_action,
         a.status AS appointment_status,
         a.appointment_date,
+        a.isEmergency,
         d.doctor AS doctor_name
       FROM tele_appointments a
       JOIN tele_patient p ON a.patient_id = p.patient_id
@@ -301,6 +304,7 @@ const getAppointmentsByDateRangeByDoctor = async (req, res) => {
         a.payment_action,
         a.status AS appointment_status,
         a.appointment_date,
+        a.isEmergency,
         d.doctor AS doctor_name
       FROM tele_appointments a
       JOIN tele_patient p ON a.patient_id = p.patient_id
@@ -412,7 +416,8 @@ const fetchAllConsultationsForDoctor = async (req, res) => {
         p.phone_no,
         a.appointment_type,
         a.service,
-        a.appointment_time
+        a.appointment_time,
+        a.isEmergency
       FROM tele_appointments a
       JOIN tele_patient p ON a.patient_id = p.patient_id
       WHERE a.doctor_id = :doctor_id
