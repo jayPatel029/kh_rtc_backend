@@ -359,23 +359,25 @@ const getAppointmentById = async (req, res) => {
 
     const row = results[0];
 
-    const appointment = {
-      id: row.id,
-      doctor_id: row.doctor_id,
-      doctor_name: row.doctor_name,
-      patient_id: row.patient_id,
-      patient_name: row.patient_name,
-      patient_phone: row.patient_phone,
-      clinic_id: row.clinic_id,
-      clinic_name: row.clinic_name,
-      appointment_date: row.appointment_date,
-      appointment_time: row.appointment_time,
-      status: row.status,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-    };
+        res.json({ success: true, data: row });
 
-    res.json({ success: true, data: appointment });
+    // const appointment = {
+    //   id: row.id,
+    //   doctor_id: row.doctor_id,
+    //   doctor_name: row.doctor_name,
+    //   patient_id: row.patient_id,
+    //   patient_name: row.patient_name,
+    //   patient_phone: row.patient_phone,
+    //   clinic_id: row.clinic_id,
+    //   clinic_name: row.clinic_name,
+    //   appointment_date: row.appointment_date,
+    //   appointment_time: row.appointment_time,
+    //   status: row.status,
+    //   created_at: row.created_at,
+    //   updated_at: row.updated_at,
+    // };
+
+    // res.json({ success: true, data: appointment });
   } catch (error) {
     console.error("Error fetching appointment:", error);
     res.status(500).json({
