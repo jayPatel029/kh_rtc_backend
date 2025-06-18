@@ -335,17 +335,19 @@ const getAppointmentById = async (req, res) => {
 
   try {
     const query = `
-      SELECT 
-        apt.*,
-        doc.doctor AS doctor_name,
-        pat.name AS patient_name,
-        pat.phone_no AS patient_phone,
-        cl.clinic_name
-      FROM tele_appointments apt
-      LEFT JOIN tele_doctor doc ON apt.doctor_id = doc.id
-      LEFT JOIN tele_patient pat ON apt.patient_id = pat.patient_id
-      LEFT JOIN tele_clinic cl ON doc.clinic_id = cl.id
-      WHERE apt.id = :id
+  SELECT 
+    apt.*,
+    doc.doctor AS doctor_name,
+    pat.name AS patient_name,
+    pat.phone_no AS patient_phone,
+    cl.id AS clinic_id,
+    cl.clinic_name
+  FROM tele_appointments apt
+  LEFT JOIN tele_doctor doc ON apt.doctor_id = doc.id
+  LEFT JOIN tele_patient pat ON apt.patient_id = pat.patient_id
+  LEFT JOIN tele_doctor_clinic dcl ON doc.id = dcl.doctor_id
+  LEFT JOIN tele_clinic cl ON dcl.clinic_id = cl.id
+  WHERE apt.id = :id
     `;
 
     const results = await sequelize.query(query, {
@@ -359,7 +361,7 @@ const getAppointmentById = async (req, res) => {
 
     const row = results[0];
 
-        res.json({ success: true, data: row });
+    res.json({ success: true, data: row });
 
     // const appointment = {
     //   id: row.id,
