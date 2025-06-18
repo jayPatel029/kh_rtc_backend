@@ -349,7 +349,7 @@ const getAppointmentById = async (req, res) => {
     `;
 
     const results = await sequelize.query(query, {
-      replacements: { id },
+      replacements: { id: Number(id) },
       type: QueryTypes.SELECT,
     });
 
