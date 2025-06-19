@@ -1031,7 +1031,8 @@ const getPrescriptions = async (req, res) => {
       LEFT JOIN tele_appointments apt ON p.appointment_id = apt.id
       LEFT JOIN tele_doctor doc ON apt.doctor_id = doc.id
       LEFT JOIN tele_patient pat ON apt.patient_id = pat.patient_id
-      LEFT JOIN tele_clinic cl ON doc.clinic_id = cl.id
+      LEFT JOIN tele_doctor_clinic dcl ON doc.id = dcl.doctor_id
+      LEFT JOIN tele_clinic cl ON dcl.clinic_id = cl.id
       WHERE 1=1
     `;
 
@@ -1210,7 +1211,8 @@ const getPrescriptionById = async (req, res) => {
       LEFT JOIN tele_appointments apt ON p.appointment_id = apt.id
       LEFT JOIN tele_doctor doc ON apt.doctor_id = doc.id
       LEFT JOIN tele_patient pat ON apt.patient_id = pat.patient_id
-      LEFT JOIN tele_clinic cl ON doc.clinic_id = cl.id
+      LEFT JOIN tele_doctor_clinic dcl ON doc.id = dcl.doctor_id
+      LEFT JOIN tele_clinic cl ON dcl.clinic_id = cl.id
       WHERE p.id = :id
     `;
 
