@@ -1261,6 +1261,8 @@ const uploadPaymentReceipt = async (req, res) => {
   }
 };
 
+
+
 module.exports = {
   updateAppointment,
   getTotalAppointments,

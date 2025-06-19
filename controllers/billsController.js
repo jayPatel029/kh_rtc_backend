@@ -1,9 +1,9 @@
 
 const { sequelize, pool } = require("../config/database");
 const { QueryTypes } = require("sequelize");
+const { uploadFile } = require("../utils/dataUpload");
 
 //bills
-// POST /api/bills/create
 const createBill = async (req, res) => {
   try {
     const {
@@ -49,6 +49,7 @@ const createBill = async (req, res) => {
   }
 };
 
+
 const getAllBills = async (req, res) => {
   try {
     const { doctor_id, patient_id, appointment_id, prescription_id, date } = req.query;
@@ -82,7 +83,7 @@ const getAllBills = async (req, res) => {
     }
 
     if (date) {
-      query += " AND DATE(b.created_at) = :date";
+      query += " AND DATE(b.created_date) = :date";
       replacements.date = date;
     }
 
@@ -99,7 +100,32 @@ const getAllBills = async (req, res) => {
 };
 
 
+const uploadPaymentReceipt = async (req, res) => {
+  try {
+    const { bill_id, payment_receipt_url } = req.body;
+
+    if (!bill_id || !payment_receipt_url) {
+      return res.status(400).json({ message: "bill_id and payment_receipt_url are required" });
+    }
+
+    await sequelize.query(
+      `UPDATE tele_bills SET payment_receipt = :payment_receipt WHERE id = :bill_id`,
+      {
+        replacements: { payment_receipt: payment_receipt_url, bill_id },
+        type: QueryTypes.UPDATE,
+      }
+    );
+    res.status(200).json({ message: "Payment receipt uploaded successfully." });
+  } catch (err) {
+    console.error("Error uploading payment receipt:", err);
+    res.status(500).json({ error: "Server error during receipt upload" });
+  }
+};
+
+
+
 module.exports = {
 createBill,
 getAllBills,
+uploadPaymentReceipt
 }
