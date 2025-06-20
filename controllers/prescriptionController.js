@@ -8,117 +8,6 @@ const upload = multer({ dest: "uploads/" }); // multer setup
 
 //! todo add a upload prescription funciton here
 
-// Get template IDs
-const getTemplateIds = async (req, res) => {
-  try {
-    const results = await sequelize.query(
-      "SELECT DISTINCT template_id FROM tele_prescription WHERE template_id IS NOT NULL",
-      { type: sequelize.QueryTypes.SELECT }
-    );
-    res.json(results);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-// Update template ID
-const updateTemplateId = async (req, res) => {
-  const { templateId } = req.body;
-  try {
-    await sequelize.query(
-      "UPDATE tele_prescription SET template_id = ? WHERE template_id IS NULL",
-      {
-        replacements: [templateId],
-        type: sequelize.QueryTypes.UPDATE,
-      }
-    );
-    res.json({ message: "Template ID updated successfully for prescriptions" });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-// Get prescription by template ID
-const getPrescriptionByTemplateId = async (req, res) => {
-  const { templateId } = req.params;
-  try {
-    const results = await sequelize.query(
-      `
-      SELECT 
-        p.*,
-        a.*,
-        d.*,
-        m.*,
-        adv.*,
-        c.*
-      FROM tele_prescription p
-      LEFT JOIN tele_allergies a ON p.id = a.prescription_id
-      LEFT JOIN tele_diagnosis d ON p.id = d.prescription_id
-      LEFT JOIN tele_medicines m ON p.id = m.prescription_id
-      LEFT JOIN tele_advice adv ON p.id = adv.prescription_id
-      LEFT JOIN tele_complaints c ON p.id = c.prescription_id
-      WHERE p.template_id = ?
-    `,
-      {
-        replacements: [templateId],
-        type: sequelize.QueryTypes.SELECT,
-      }
-    );
-    res.json(results);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-// Add or Update Prescription
-const addOrUpdatePrescription = async (req, res) => {
-  const { appointment_id, template_id } = req.body;
-
-  try {
-    const result = await sequelize.transaction(async (t) => {
-      const [existingPrescription] = await sequelize.query(
-        "SELECT id FROM tele_prescription WHERE appointment_id = ?",
-        {
-          replacements: [appointment_id],
-          type: sequelize.QueryTypes.SELECT,
-          transaction: t,
-        }
-      );
-
-      let prescriptionId;
-      if (existingPrescription) {
-        prescriptionId = existingPrescription.id;
-        await sequelize.query(
-          "UPDATE tele_prescription SET template_id = ? WHERE id = ?",
-          {
-            replacements: [template_id, prescriptionId],
-            type: sequelize.QueryTypes.UPDATE,
-            transaction: t,
-          }
-        );
-      } else {
-        const [result] = await sequelize.query(
-          "INSERT INTO tele_prescription (appointment_id, template_id) VALUES (?, ?)",
-          {
-            replacements: [appointment_id, template_id],
-            type: sequelize.QueryTypes.INSERT,
-            transaction: t,
-          }
-        );
-        prescriptionId = result;
-      }
-      return prescriptionId;
-    });
-
-    res.json({
-      message: "Prescription updated successfully",
-      prescription_id: result,
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
 // Add or Update Allergies
 const addOrUpdateAllergies = async (req, res) => {
   const { prescription_id, medicines, food, others } = req.body;
@@ -715,9 +604,9 @@ const uploadPrescription = async (req, res) => {
 
     const prescFIle = req.files?.prescription?.[0];
 
-    if(!prescFIle ) {
+    if (!prescFIle) {
       console.log("NO file uploaded!!");
-      res.status(400).json({message: "No file uploaded."})
+      res.status(400).json({ message: "No file uploaded." });
     }
 
     const updates = {
@@ -725,8 +614,7 @@ const uploadPrescription = async (req, res) => {
     };
     console.log("file received", updates);
 
-    const updateFields = 
-    Object.entries(updates)
+    const updateFields = Object.entries(updates)
       .filter(([, value]) => value !== null && value !== undefined)
       .map(([key]) => `${key} = :${key}`)
       .join(", ");
@@ -966,10 +854,195 @@ const addAdvice = async (req, res) => {
   }
 };
 
+// const getPrescriptions = async (req, res) => {
+//   const { doctor_id, patient_id, appointment_id } = req.query;
+
+//   try {
+//     let query = `
+//       SELECT DISTINCT
+//         p.id AS prescription_id,
+//         p.appointment_id,
+//         p.template_id,
+//         p.next_visit,
+//         p.referred_to,
+//         p.investigation,
+//         p.past_medication,
+//         p.created_at AS prescription_created_at,
+//         p.updated_at AS prescription_updated_at,
+
+//         a.medicines AS allergy_medicines,
+//         a.food AS allergy_food,
+//         a.others AS allergy_others,
+
+//         d.diagnosis_no,
+//         d.diagnosis,
+//         d.duration AS diagnosis_duration,
+//         d.date AS diagnosis_date,
+
+//         m.medicine_no,
+//         m.name AS medicine_name,
+//         m.type AS medicine_type,
+//         m.dosage,
+//         m.frequency,
+//         m.duration AS medicine_duration,
+//         m.when_to_take,
+//         m.from_date,
+//         m.to_date,
+
+//         adv.advice_text,
+//         adv.date AS advice_date,
+
+//         c.complaint_no,
+//         c.complaint,
+//         c.severity,
+//         c.duration AS complaint_duration,
+//         c.date AS complaint_date,
+
+//         apt.appointment_date,
+//         apt.appointment_time,
+//         apt.status AS appointment_status,
+
+//         doc.id AS doctor_id,
+//         doc.doctor AS doctor_name,
+//         cl.id AS clinic_id,
+//         cl.clinic_name,
+
+//         pat.patient_id,
+//         pat.name AS patient_name,
+//         pat.phone_no AS patient_phone
+//       FROM tele_prescription p
+//       LEFT JOIN tele_allergies a ON p.id = a.prescription_id
+//       LEFT JOIN tele_diagnosis d ON p.id = d.prescription_id
+//       LEFT JOIN tele_medicines m ON p.id = m.prescription_id
+//       LEFT JOIN tele_advice adv ON p.id = adv.prescription_id
+//       LEFT JOIN tele_complaints c ON p.id = c.prescription_id
+//       LEFT JOIN tele_appointments apt ON p.appointment_id = apt.id
+//       LEFT JOIN tele_doctor doc ON apt.doctor_id = doc.id
+//       LEFT JOIN tele_patient pat ON apt.patient_id = pat.patient_id
+//       LEFT JOIN tele_doctor_clinic dcl ON doc.id = dcl.doctor_id
+//       LEFT JOIN tele_clinic cl ON dcl.clinic_id = cl.id
+//       WHERE 1=1
+//     `;
+
+//     const replacements = {};
+
+//     if (doctor_id) {
+//       query += ` AND doc.id = :doctor_id`;
+//       replacements.doctor_id = doctor_id;
+//     }
+
+//     if (patient_id) {
+//       query += ` AND pat.patient_id = :patient_id`;
+//       replacements.patient_id = patient_id;
+//     }
+
+//     if (appointment_id) {
+//       query += ` AND apt.id = :appointment_id`;
+//       replacements.appointment_id = appointment_id;
+//     }
+
+//     query += ` ORDER BY p.created_at DESC`;
+
+//     const results = await sequelize.query(query, {
+//       replacements,
+//       type: QueryTypes.SELECT,
+//     });
+
+//     const groupedResults = results.reduce((acc, row) => {
+//       const prescriptionId = row.prescription_id;
+//       if (!acc[prescriptionId]) {
+//         acc[prescriptionId] = {
+//           prescription: {
+//             id: row.prescription_id,
+//             appointment_id: row.appointment_id,
+//             template_id: row.template_id,
+//             next_visit: row.next_visit,
+//             referred_to: row.referred_to,
+//             investigation: row.investigation,
+//             past_medication: row.past_medication,
+//             created_at: row.prescription_created_at,
+//             updated_at: row.prescription_updated_at,
+//           },
+//           appointment: {
+//             date: row.appointment_date,
+//             time: row.appointment_time,
+//             status: row.appointment_status,
+//           },
+//           doctor: {
+//             id: row.doctor_id,
+//             name: row.doctor_name,
+//           },
+//           patient: {
+//             id: row.patient_id,
+//             name: row.patient_name,
+//             phone: row.patient_phone,
+//           },
+//           clinic: {
+//             id: row.clinic_id,
+//             name: row.clinic_name,
+//           },
+//           allergies: {
+//             medicines: row.allergy_medicines,
+//             food: row.allergy_food,
+//             others: row.allergy_others,
+//           },
+//           diagnosis: {
+//             diagnosis_no: row.diagnosis_no,
+//             diagnosis: row.diagnosis,
+//             duration: row.diagnosis_duration,
+//             date: row.diagnosis_date,
+//           },
+//           medicines: {
+//             medicine_no: row.medicine_no,
+//             name: row.medicine_name,
+//             type: row.medicine_type,
+//             dosage: row.dosage,
+//             frequency: row.frequency,
+//             duration: row.medicine_duration,
+//             when_to_take: row.when_to_take,
+//             from_date: row.from_date,
+//             to_date: row.to_date,
+//           },
+//           advice: {
+//             advice_text: row.advice_text,
+//             date: row.advice_date,
+//           },
+//           complaints: {
+//             complaint_no: row.complaint_no,
+//             complaint: row.complaint,
+//             severity: row.severity,
+//             duration: row.complaint_duration,
+//             date: row.complaint_date,
+//           },
+//         };
+//       }
+//       return acc;
+//     }, {});
+
+//     res.json({
+//       success: true,
+//       data: Object.values(groupedResults),
+//     });
+//   } catch (error) {
+//     console.error("Error fetching prescriptions:", error);
+//     res.status(500).json({
+//       success: false,
+//       error: "Failed to fetch prescriptions",
+//     });
+//   }
+// };
+
 const getPrescriptions = async (req, res) => {
-  const { doctor_id, patient_id, appointment_id } = req.query;
+  const { doctor_id, patient_id, appointment_id, latest } = req.query;
 
   try {
+    if (latest === "true" && !patient_id) {
+      return res.status(400).json({
+        success: false,
+        error: "patient_id is required when latest=true",
+      });
+    }
+
     let query = `
       SELECT DISTINCT 
         p.id AS prescription_id,
@@ -1021,7 +1094,22 @@ const getPrescriptions = async (req, res) => {
 
         pat.patient_id,
         pat.name AS patient_name,
-        pat.phone_no AS patient_phone
+        pat.phone_no AS patient_phone,
+
+        v.height,
+        v.heightUnit  ,
+        v.weight   ,
+        v.temperature   ,
+        v.temperatureUnit,  
+        v.blood_pressure,  
+        v.bloodPressureUnit, 
+        v.blood_sugar,
+        v.bloodSugarUnit,  
+        v.spO2,  
+        v.pulse_rate,  
+        v.other, 
+        v.othervalue
+
       FROM tele_prescription p
       LEFT JOIN tele_allergies a ON p.id = a.prescription_id
       LEFT JOIN tele_diagnosis d ON p.id = d.prescription_id
@@ -1033,6 +1121,7 @@ const getPrescriptions = async (req, res) => {
       LEFT JOIN tele_patient pat ON apt.patient_id = pat.patient_id
       LEFT JOIN tele_doctor_clinic dcl ON doc.id = dcl.doctor_id
       LEFT JOIN tele_clinic cl ON dcl.clinic_id = cl.id
+      LEFT JOIN tele_appointment_vitals v ON p.appointment_id = v.appointment_id
       WHERE 1=1
     `;
 
@@ -1054,6 +1143,11 @@ const getPrescriptions = async (req, res) => {
     }
 
     query += ` ORDER BY p.created_at DESC`;
+
+    // Add LIMIT 1 if latest=true
+    if (latest === "true") {
+      query += ` LIMIT 1`;
+    }
 
     const results = await sequelize.query(query, {
       replacements,
@@ -1126,6 +1220,22 @@ const getPrescriptions = async (req, res) => {
             duration: row.complaint_duration,
             date: row.complaint_date,
           },
+
+          vitals: {
+            height: row.height,
+            heightUnit: row.heightUnit,
+            weight: row.weight,
+            temperature: row.temperature,
+            temperatureUnit: row.temperatureUnit,
+            bloodPressure: row.blood_pressure,
+            bloodPressureUnit: row.bloodPressureUnit,
+            bloodSugar: row.blood_sugar,
+            bloodSugarUnit: row.bloodSugarUnit,
+            spO2: row.spO2,
+            pulseRate: row.pulse_rate,
+            other: row.other,
+            otherValue: row.othervalue,
+          },
         };
       }
       return acc;
@@ -1144,7 +1254,6 @@ const getPrescriptions = async (req, res) => {
   }
 };
 
-// Get prescription by ID
 const getPrescriptionById = async (req, res) => {
   const { id } = req.query;
 
@@ -1422,10 +1531,6 @@ const getAllTemplates = async (req, res) => {
 };
 
 module.exports = {
-  getTemplateIds,
-  updateTemplateId,
-  getPrescriptionByTemplateId,
-  addOrUpdatePrescription,
   addOrUpdateAllergies,
   addOrUpdateDiagnosis,
   addOrUpdateMedicines,

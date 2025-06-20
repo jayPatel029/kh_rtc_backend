@@ -1,241 +1,179 @@
-const { sequelize, pool } = require('../config/database');
-const { QueryTypes } = require('sequelize');
+const { sequelize, pool } = require("../config/database");
+const { QueryTypes } = require("sequelize");
+const { generateTemplateId } = require("../utils/appointmentUtils");
 
-// Get common template IDs
-const getCommonTemplateIds = async (req, res) => {
-  try {
-    const results = await sequelize.query(`
-      SELECT template_id
-      FROM (
-          SELECT DISTINCT template_id FROM tele_complaints
-          UNION
-          SELECT DISTINCT template_id FROM tele_diagnosis
-          UNION
-          SELECT DISTINCT template_id FROM tele_medicines
-          UNION
-          SELECT DISTINCT template_id FROM tele_advice
-      ) AS combined_templates;
-    `, { type: QueryTypes.SELECT });
-    
-    res.json(results);
-  } catch (err) {
-    console.error('Error fetching common template IDs:', err);
-    res.status(500).json({ error: err.message });
-  }
-};
+const createPrescriptionTemplate = async (req, res) => {
+  const {
+    template_name,
+    template_description,
+    medicines,
+    advice,
+    complaints,
+    next_visit,
+    referred_to,
+    investigation,
+    past_medication,
+  } = req.body;
 
-// Get complaints template IDs
-const getComplaintsTemplateIds = async (req, res) => {
   try {
-    const results = await sequelize.query(
-      'SELECT DISTINCT template_id FROM tele_complaints WHERE template_id IS NOT NULL',
-      { type: QueryTypes.SELECT }
-    );
-    res.json(results);
-  } catch (err) {
-    console.error('Error fetching complaints template IDs:', err);
-    res.status(500).json({ error: err.message });
-  }
-};
-
-// Update complaints template ID
-const updateComplaintsTemplateId = async (req, res) => {
-  const { templateId } = req.body;
-  try {
-    await sequelize.query(
-      'UPDATE tele_complaints SET template_id = ? WHERE template_id IS NULL',
+    // Generate a unique template_id
+    const template_id = generateTemplateId();
+    // 1. Insert into tele_prescription (no appointment_id)
+    const [result] = await sequelize.query(
+      `INSERT INTO tele_prescription 
+        (template_id, template_name, template_description, next_visit, referred_to, investigation, past_medication)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
       {
-        replacements: [templateId],
-        type: QueryTypes.UPDATE
+        replacements: [
+          template_id,
+          template_name,
+          template_description,
+          next_visit || null,
+          referred_to ? JSON.stringify(referred_to) : null,
+          investigation || null,
+          past_medication || null,
+        ],
+        type: sequelize.QueryTypes.INSERT,
       }
     );
-    res.json({ message: 'Template ID updated successfully for complaints' });
-  } catch (err) {
-    console.error('Error updating complaints template ID:', err);
-    res.status(500).json({ error: err.message });
+    const templatePrescriptionId = result;
+
+    // 2. Insert medicines, advice, complaints (if provided)
+    // Medicines
+    if (medicines && Array.isArray(medicines)) {
+      for (const med of medicines) {
+        await sequelize.query(
+          `INSERT INTO tele_medicines (prescription_id, medicine_no, name, type, dosage, frequency, duration, when_to_take, from_date, to_date)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          {
+            replacements: [
+              templatePrescriptionId,
+              med.medicine_no,
+              med.name,
+              med.type,
+              med.dosage,
+              med.frequency,
+              med.duration,
+              med.when_to_take,
+              med.from_date,
+              med.to_date,
+            ],
+            type: sequelize.QueryTypes.INSERT,
+          }
+        );
+      }
+    }
+    // Advice
+    if (advice && Array.isArray(advice)) {
+      for (const adv of advice) {
+        await sequelize.query(
+          `INSERT INTO tele_advice (prescription_id, advice_text, date)
+           VALUES (?, ?, ?)`,
+          {
+            replacements: [
+              templatePrescriptionId,
+              adv.advice_text,
+              adv.date,
+            ],
+            type: sequelize.QueryTypes.INSERT,
+          }
+        );
+      }
+    }
+    // Complaints
+    if (complaints && Array.isArray(complaints)) {
+      for (const comp of complaints) {
+        await sequelize.query(
+          `INSERT INTO tele_complaints (prescription_id, complaint_no, complaint, severity, duration, date)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          {
+            replacements: [
+              templatePrescriptionId,
+              comp.complaint_no,
+              comp.complaint,
+              comp.severity,
+              comp.duration,
+              comp.date,
+            ],
+            type: sequelize.QueryTypes.INSERT,
+          }
+        );
+      }
+    }
+
+    res
+      .status(201)
+      .json({ message: "Template created successfully", template_id });
+  } catch (error) {
+    console.error("Error creating template:", error);
+    res.status(500).json({ error: "Failed to create template" });
   }
 };
 
-// Get complaints by template ID
-const getComplaintsByTemplateId = async (req, res) => {
-  const { templateId } = req.params;
+const getAllPrescriptionTemplates = async (req, res) => {
+  const { template_name } = req.query;
   try {
-    const results = await sequelize.query(
-      'SELECT * FROM tele_complaints WHERE template_id = ?',
+let query = `
+  SELECT 
+    template_name, 
+    template_description, 
+    template_id, 
+    id AS prescription_id, 
+    created_at 
+  FROM tele_prescription 
+  WHERE appointment_id IS NULL`;
+    const replacements = {  };
+    if (template_name) {
+      query += ` AND LOWER(template_name) LIKE LOWER(:template_name)`;
+      replacements.template_name = `%${template_name}%`;
+    }
+    const templates = await sequelize.query(query, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+    res.json({ templates });
+  } catch (error) {
+    console.error("Failed to fetch templates", error);
+    res.status(500).json({ error: "Failed to fetch templates" });
+  }
+};
+
+const getPrescriptionTemplateById = async (req, res) => {
+  const { template_id } = req.query;
+  try {
+    // Get template
+    const [template] = await sequelize.query(
+      `SELECT * FROM tele_prescription WHERE template_id = :template_id AND appointment_id IS NULL`,
       {
-        replacements: [templateId],
-        type: QueryTypes.SELECT
+        replacements: { template_id },
+        type: sequelize.QueryTypes.SELECT,
       }
     );
-    res.json(results);
-  } catch (err) {
-    console.error('Error fetching complaints by template ID:', err);
-    res.status(500).json({ error: err.message });
-  }
-};
+    if (!template) return res.status(404).json({ error: "Template not found" });
 
-// Get diagnosis template IDs
-const getDiagnosisTemplateIds = async (req, res) => {
-  try {
-    const results = await sequelize.query(
-      'SELECT DISTINCT template_id FROM tele_diagnosis WHERE template_id IS NOT NULL',
-      { type: QueryTypes.SELECT }
+    // Get related medicines, advice, complaints
+    const medicines = await sequelize.query(
+      `SELECT * FROM tele_medicines WHERE prescription_id = :template_id`,
+      { replacements: { template_id }, type: sequelize.QueryTypes.SELECT }
     );
-    res.json(results);
-  } catch (err) {
-    console.error('Error fetching diagnosis template IDs:', err);
-    res.status(500).json({ error: err.message });
-  }
-};
+    const advice = await sequelize.query(
+      `SELECT * FROM tele_advice WHERE prescription_id = :template_id`,
+      { replacements: { template_id }, type: sequelize.QueryTypes.SELECT }
+    );
+    const complaints = await sequelize.query(
+      `SELECT * FROM tele_complaints WHERE prescription_id = :template_id`,
+      { replacements: { template_id }, type: sequelize.QueryTypes.SELECT }
+    );
 
-// Update diagnosis template ID
-const updateDiagnosisTemplateId = async (req, res) => {
-  const { templateId } = req.body;
-  try {
-    await sequelize.query(
-      'UPDATE tele_diagnosis SET template_id = ? WHERE template_id IS NULL',
-      {
-        replacements: [templateId],
-        type: QueryTypes.UPDATE
-      }
-    );
-    res.json({ message: 'Template ID updated successfully for diagnosis' });
-  } catch (err) {
-    console.error('Error updating diagnosis template ID:', err);
-    res.status(500).json({ error: err.message });
-  }
-};
-
-// Get diagnosis by template ID
-const getDiagnosisByTemplateId = async (req, res) => {
-  const { templateId } = req.params;
-  try {
-    const results = await sequelize.query(
-      'SELECT * FROM tele_diagnosis WHERE template_id = ?',
-      {
-        replacements: [templateId],
-        type: QueryTypes.SELECT
-      }
-    );
-    res.json(results);
-  } catch (err) {
-    console.error('Error fetching diagnosis by template ID:', err);
-    res.status(500).json({ error: err.message });
-  }
-};
-
-// Get medicines template IDs
-const getMedicinesTemplateIds = async (req, res) => {
-  try {
-    const results = await sequelize.query(
-      'SELECT DISTINCT template_id FROM tele_medicines WHERE template_id IS NOT NULL',
-      { type: QueryTypes.SELECT }
-    );
-    res.json(results);
-  } catch (err) {
-    console.error('Error fetching medicines template IDs:', err);
-    res.status(500).json({ error: err.message });
-  }
-};
-
-// Update medicines template ID
-const updateMedicinesTemplateId = async (req, res) => {
-  const { templateId } = req.body;
-  try {
-    await sequelize.query(
-      'UPDATE tele_medicines SET template_id = ? WHERE template_id IS NULL',
-      {
-        replacements: [templateId],
-        type: QueryTypes.UPDATE
-      }
-    );
-    res.json({ message: 'Template ID updated successfully for medicines' });
-  } catch (err) {
-    console.error('Error updating medicines template ID:', err);
-    res.status(500).json({ error: err.message });
-  }
-};
-
-// Get medicines by template ID
-const getMedicinesByTemplateId = async (req, res) => {
-  const { templateId } = req.params;
-  try {
-    const results = await sequelize.query(
-      'SELECT * FROM tele_medicines WHERE template_id = ?',
-      {
-        replacements: [templateId],
-        type: QueryTypes.SELECT
-      }
-    );
-    res.json(results);
-  } catch (err) {
-    console.error('Error fetching medicines by template ID:', err);
-    res.status(500).json({ error: err.message });
-  }
-};
-
-// Get advice template IDs
-const getAdviceTemplateIds = async (req, res) => {
-  try {
-    const results = await sequelize.query(
-      'SELECT DISTINCT template_id FROM tele_advice WHERE template_id IS NOT NULL',
-      { type: QueryTypes.SELECT }
-    );
-    res.json(results);
-  } catch (err) {
-    console.error('Error fetching advice template IDs:', err);
-    res.status(500).json({ error: err.message });
-  }
-};
-
-// Update advice template ID
-const updateAdviceTemplateId = async (req, res) => {
-  const { templateId } = req.body;
-  try {
-    await sequelize.query(
-      'UPDATE tele_advice SET template_id = ? WHERE template_id IS NULL',
-      {
-        replacements: [templateId],
-        type: QueryTypes.UPDATE
-      }
-    );
-    res.json({ message: 'Template ID updated successfully for advice' });
-  } catch (err) {
-    console.error('Error updating advice template ID:', err);
-    res.status(500).json({ error: err.message });
-  }
-};
-
-// Get advice by template ID
-const getAdviceByTemplateId = async (req, res) => {
-  const { templateId } = req.params;
-  try {
-    const results = await sequelize.query(
-      'SELECT * FROM tele_advice WHERE template_id = ?',
-      {
-        replacements: [templateId],
-        type: QueryTypes.SELECT
-      }
-    );
-    res.json(results);
-  } catch (err) {
-    console.error('Error fetching advice by template ID:', err);
-    res.status(500).json({ error: err.message });
+    res.json({ template, medicines, advice, complaints });
+  } catch (error) {
+        console.error("Failed to load template", error);
+    res.status(500).json({ error: "Failed to fetch template" });
   }
 };
 
 module.exports = {
-  getCommonTemplateIds,
-  getComplaintsTemplateIds,
-  updateComplaintsTemplateId,
-  getComplaintsByTemplateId,
-  getDiagnosisTemplateIds,
-  updateDiagnosisTemplateId,
-  getDiagnosisByTemplateId,
-  getMedicinesTemplateIds,
-  updateMedicinesTemplateId,
-  getMedicinesByTemplateId,
-  getAdviceTemplateIds,
-  updateAdviceTemplateId,
-  getAdviceByTemplateId
+  createPrescriptionTemplate,
+  getAllPrescriptionTemplates,
+  getPrescriptionTemplateById,
 };

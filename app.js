@@ -7,7 +7,6 @@ require('dotenv').config();
 require('./cronjob/cron_funcitons')
 const routes = require('./routes');
 const { createAllTables } = require('./models/tables');
-const { createGoogleMeetEvent } = require('./utils/calendarService');
 const { google } = require('googleapis');
 const open = require('open');
 

@@ -193,8 +193,8 @@ const createappointmentVitalsTable = async () => {
         pulse_rate VARCHAR(50) NULL,  
         other TEXT NULL, 
         othervalue TEXT NULL,
-        FOREIGN KEY (appointment_id) REFERENCES tele_appointments(id) ON DELETE CASCADE
-        FOREIGN KEY (patient_id) REFERENCES tele_patient(patient_id) ON DELETE CASCADE,
+        FOREIGN KEY (appointment_id) REFERENCES tele_appointments(id) ON DELETE CASCADE,
+        FOREIGN KEY (patient_id) REFERENCES tele_patient(patient_id) ON DELETE CASCADE
       );
     `;
     await sequelize.query(query);
