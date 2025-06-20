@@ -296,14 +296,23 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
   } = req.body;
 
   try {
-    console.log("got this data for presc: ", req.body);
+    // Fetch doctor_id from tele_appointments
+    const [appointment] = await sequelize.query(
+      'SELECT doctor_id FROM tele_appointments WHERE id = ?',
+      {
+        replacements: [appointment_id],
+        type: sequelize.QueryTypes.SELECT,
+      }
+    );
+    if (!appointment || !appointment.doctor_id) {
+      return res.status(400).json({ error: 'Invalid appointment_id or doctor not found.' });
+    }
+    const doctor_id = appointment.doctor_id;
 
-    // const pid = await sequelize.query( "select patient_id from tele_appointments where id = :appointment_id" )
-    // console.log("the pid", pid);
     const result = await sequelize.transaction(async (t) => {
       // Step 1: Upsert Prescription
       const [existingPrescription] = await sequelize.query(
-        "SELECT id FROM tele_prescription WHERE appointment_id = ?",
+        'SELECT id FROM tele_prescription WHERE appointment_id = ?',
         {
           replacements: [appointment_id],
           type: sequelize.QueryTypes.SELECT,
@@ -322,7 +331,8 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
                next_visit = ?, 
                referred_to = ?, 
                investigation = ?, 
-               past_medication = ? 
+               past_medication = ?,
+               doctor_id = ?
            WHERE id = ?`,
           {
             replacements: [
@@ -333,6 +343,7 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
               referred_to ? JSON.stringify(referred_to) : null,
               investigation || null,
               past_medication || null,
+              doctor_id,
               prescriptionId,
             ],
             type: sequelize.QueryTypes.UPDATE,
@@ -342,8 +353,8 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
       } else {
         const [insertResult] = await sequelize.query(
           `INSERT INTO tele_prescription 
-            (appointment_id, template_id, template_name, template_description, next_visit, referred_to, investigation, past_medication)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            (appointment_id, template_id, template_name, template_description, next_visit, referred_to, investigation, past_medication, doctor_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           {
             replacements: [
               appointment_id,
@@ -354,6 +365,7 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
               referred_to ? JSON.stringify(referred_to) : null,
               investigation || null,
               past_medication || null,
+              doctor_id,
             ],
             type: sequelize.QueryTypes.INSERT,
             transaction: t,
@@ -365,7 +377,7 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
       // Step 2: Allergies
       if (allergies) {
         const [existing] = await sequelize.query(
-          "SELECT id FROM tele_allergies WHERE prescription_id = ?",
+          'SELECT id FROM tele_allergies WHERE prescription_id = ?',
           {
             replacements: [prescriptionId],
             type: sequelize.QueryTypes.SELECT,
@@ -375,12 +387,13 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
 
         if (existing) {
           await sequelize.query(
-            "UPDATE tele_allergies SET medicines = ?, food = ?, others = ? WHERE prescription_id = ?",
+            'UPDATE tele_allergies SET medicines = ?, food = ?, others = ?, doctor_id = ? WHERE prescription_id = ?',
             {
               replacements: [
                 allergies.medicines,
                 allergies.food,
                 allergies.others,
+                doctor_id,
                 prescriptionId,
               ],
               type: sequelize.QueryTypes.UPDATE,
@@ -389,13 +402,14 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
           );
         } else {
           await sequelize.query(
-            "INSERT INTO tele_allergies (prescription_id, medicines, food, others) VALUES (?, ?, ?, ?)",
+            'INSERT INTO tele_allergies (prescription_id, medicines, food, others, doctor_id) VALUES (?, ?, ?, ?, ?)',
             {
               replacements: [
                 prescriptionId,
                 allergies.medicines,
                 allergies.food,
                 allergies.others,
+                doctor_id,
               ],
               type: sequelize.QueryTypes.INSERT,
               transaction: t,
@@ -407,7 +421,7 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
       // Step 3: Diagnosis
       if (diagnosis) {
         const [existing] = await sequelize.query(
-          "SELECT id FROM tele_diagnosis WHERE prescription_id = ?",
+          'SELECT id FROM tele_diagnosis WHERE prescription_id = ?',
           {
             replacements: [prescriptionId],
             type: sequelize.QueryTypes.SELECT,
@@ -417,13 +431,14 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
 
         if (existing) {
           await sequelize.query(
-            "UPDATE tele_diagnosis SET diagnosis_no = ?, diagnosis = ?, duration = ?, date = ? WHERE prescription_id = ?",
+            'UPDATE tele_diagnosis SET diagnosis_no = ?, diagnosis = ?, duration = ?, date = ?, doctor_id = ? WHERE prescription_id = ?',
             {
               replacements: [
                 diagnosis.diagnosis_no,
                 diagnosis.diagnosis,
                 diagnosis.duration,
                 diagnosis.date,
+                doctor_id,
                 prescriptionId,
               ],
               type: sequelize.QueryTypes.UPDATE,
@@ -432,7 +447,7 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
           );
         } else {
           await sequelize.query(
-            "INSERT INTO tele_diagnosis (prescription_id, diagnosis_no, diagnosis, duration, date) VALUES (?, ?, ?, ?, ?)",
+            'INSERT INTO tele_diagnosis (prescription_id, diagnosis_no, diagnosis, duration, date, doctor_id) VALUES (?, ?, ?, ?, ?, ?)',
             {
               replacements: [
                 prescriptionId,
@@ -440,6 +455,7 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
                 diagnosis.diagnosis,
                 diagnosis.duration,
                 diagnosis.date,
+                doctor_id,
               ],
               type: sequelize.QueryTypes.INSERT,
               transaction: t,
@@ -451,7 +467,7 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
       // Step 4: Medicines
       if (medicines) {
         const [existing] = await sequelize.query(
-          "SELECT id FROM tele_medicines WHERE prescription_id = ?",
+          'SELECT id FROM tele_medicines WHERE prescription_id = ?',
           {
             replacements: [prescriptionId],
             type: sequelize.QueryTypes.SELECT,
@@ -461,7 +477,7 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
 
         if (existing) {
           await sequelize.query(
-            "UPDATE tele_medicines SET medicine_no = ?, name = ?, type = ?, dosage = ?, frequency = ?, duration = ?, when_to_take = ?, from_date = ?, to_date = ? WHERE prescription_id = ?",
+            'UPDATE tele_medicines SET medicine_no = ?, name = ?, type = ?, dosage = ?, frequency = ?, duration = ?, when_to_take = ?, from_date = ?, to_date = ?, doctor_id = ? WHERE prescription_id = ?',
             {
               replacements: [
                 medicines.medicine_no,
@@ -473,6 +489,7 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
                 medicines.when_to_take,
                 medicines.from_date,
                 medicines.to_date,
+                doctor_id,
                 prescriptionId,
               ],
               type: sequelize.QueryTypes.UPDATE,
@@ -481,7 +498,7 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
           );
         } else {
           await sequelize.query(
-            "INSERT INTO tele_medicines (prescription_id, medicine_no, name, type, dosage, frequency, duration, when_to_take, from_date, to_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            'INSERT INTO tele_medicines (prescription_id, medicine_no, name, type, dosage, frequency, duration, when_to_take, from_date, to_date, doctor_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             {
               replacements: [
                 prescriptionId,
@@ -494,6 +511,7 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
                 medicines.when_to_take,
                 medicines.from_date,
                 medicines.to_date,
+                doctor_id,
               ],
               type: sequelize.QueryTypes.INSERT,
               transaction: t,
@@ -505,7 +523,7 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
       // Step 5: Advice
       if (advice) {
         const [existing] = await sequelize.query(
-          "SELECT id FROM tele_advice WHERE prescription_id = ?",
+          'SELECT id FROM tele_advice WHERE prescription_id = ?',
           {
             replacements: [prescriptionId],
             type: sequelize.QueryTypes.SELECT,
@@ -515,18 +533,18 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
 
         if (existing) {
           await sequelize.query(
-            "UPDATE tele_advice SET advice_text = ?, date = ? WHERE prescription_id = ?",
+            'UPDATE tele_advice SET advice_text = ?, date = ?, doctor_id = ? WHERE prescription_id = ?',
             {
-              replacements: [advice.advice_text, advice.date, prescriptionId],
+              replacements: [advice.advice_text, advice.date, doctor_id, prescriptionId],
               type: sequelize.QueryTypes.UPDATE,
               transaction: t,
             }
           );
         } else {
           await sequelize.query(
-            "INSERT INTO tele_advice (prescription_id, advice_text, date) VALUES (?, ?, ?)",
+            'INSERT INTO tele_advice (prescription_id, advice_text, date, doctor_id) VALUES (?, ?, ?, ?)',
             {
-              replacements: [prescriptionId, advice.advice_text, advice.date],
+              replacements: [prescriptionId, advice.advice_text, advice.date, doctor_id],
               type: sequelize.QueryTypes.INSERT,
               transaction: t,
             }
@@ -537,7 +555,7 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
       // Step 6: Complaints
       if (complaints) {
         const [existing] = await sequelize.query(
-          "SELECT id FROM tele_complaints WHERE prescription_id = ?",
+          'SELECT id FROM tele_complaints WHERE prescription_id = ?',
           {
             replacements: [prescriptionId],
             type: sequelize.QueryTypes.SELECT,
@@ -547,7 +565,7 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
 
         if (existing) {
           await sequelize.query(
-            "UPDATE tele_complaints SET complaint_no = ?, complaint = ?, severity = ?, duration = ?, date = ? WHERE prescription_id = ?",
+            'UPDATE tele_complaints SET complaint_no = ?, complaint = ?, severity = ?, duration = ?, date = ?, doctor_id = ? WHERE prescription_id = ?',
             {
               replacements: [
                 complaints.complaint_no,
@@ -555,6 +573,7 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
                 complaints.severity,
                 complaints.duration,
                 complaints.date,
+                doctor_id,
                 prescriptionId,
               ],
               type: sequelize.QueryTypes.UPDATE,
@@ -563,7 +582,7 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
           );
         } else {
           await sequelize.query(
-            "INSERT INTO tele_complaints (prescription_id, complaint_no, complaint, severity, duration, date) VALUES (?, ?, ?, ?, ?, ?)",
+            'INSERT INTO tele_complaints (prescription_id, complaint_no, complaint, severity, duration, date, doctor_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
             {
               replacements: [
                 prescriptionId,
@@ -572,6 +591,7 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
                 complaints.severity,
                 complaints.duration,
                 complaints.date,
+                doctor_id,
               ],
               type: sequelize.QueryTypes.INSERT,
               transaction: t,
@@ -584,7 +604,7 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
     });
 
     res.json({
-      message: "Prescription saved successfully",
+      message: 'Prescription saved successfully',
       prescription_id: result,
     });
   } catch (error) {
@@ -594,39 +614,42 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
 
 const uploadPrescription = async (req, res) => {
   try {
-    const id = req.body.id;
-    const prescription = req.file;
-    // const updates = {
+    // const id = req.body.id;
+    // const prescription = req.file;
+    // // const updates = {
     //   prescription: req.files["prescription"]
     //     ? `/uploads/${req.files["prescription"][0].filename}`
     //     : null,
     // };
 
-    const prescFIle = req.files?.prescription?.[0];
+    const {id,prescription_url} = req.body;
+    // const prescFIle = req.files?.prescription?.[0];
 
-    if (!prescFIle) {
-      console.log("NO file uploaded!!");
-      res.status(400).json({ message: "No file uploaded." });
+    // if (!prescFIle) {
+    //   console.log("NO file uploaded!!");
+    //   res.status(400).json({ message: "No file uploaded." });
+    // }
+
+    // const updates = {
+    //   prescription: `uploads/${prescription.filename}`,
+    // };
+    // console.log("file received", updates);
+
+    // const updateFields = Object.entries(updates)
+    //   .filter(([, value]) => value !== null && value !== undefined)
+    //   .map(([key]) => `${key} = :${key}`)
+    //   .join(", ");
+
+    // if (!updateFields) {
+    //   return res.status(400).json({ message: "No files uploaded." });
+    // }
+    if (!id || !prescription_url) {
+      return res.status(400).json({ message: "id and prescription_url are required" });
     }
-
-    const updates = {
-      prescription: `uploads/${prescription.filename}`,
-    };
-    console.log("file received", updates);
-
-    const updateFields = Object.entries(updates)
-      .filter(([, value]) => value !== null && value !== undefined)
-      .map(([key]) => `${key} = :${key}`)
-      .join(", ");
-
-    if (!updateFields) {
-      return res.status(400).json({ message: "No files uploaded." });
-    }
-
     await sequelize.query(
-      `UPDATE tele_prescription SET ${updateFields}, updated_at = NOW() WHERE id = :id`,
+      `UPDATE tele_prescription SET prescription = :prescription_url, updated_at = NOW() WHERE id = :id`,
       {
-        replacements: { ...updates, id },
+        replacements: { prescription_url, id },
         type: QueryTypes.UPDATE,
       }
     );
@@ -854,184 +877,6 @@ const addAdvice = async (req, res) => {
   }
 };
 
-// const getPrescriptions = async (req, res) => {
-//   const { doctor_id, patient_id, appointment_id } = req.query;
-
-//   try {
-//     let query = `
-//       SELECT DISTINCT
-//         p.id AS prescription_id,
-//         p.appointment_id,
-//         p.template_id,
-//         p.next_visit,
-//         p.referred_to,
-//         p.investigation,
-//         p.past_medication,
-//         p.created_at AS prescription_created_at,
-//         p.updated_at AS prescription_updated_at,
-
-//         a.medicines AS allergy_medicines,
-//         a.food AS allergy_food,
-//         a.others AS allergy_others,
-
-//         d.diagnosis_no,
-//         d.diagnosis,
-//         d.duration AS diagnosis_duration,
-//         d.date AS diagnosis_date,
-
-//         m.medicine_no,
-//         m.name AS medicine_name,
-//         m.type AS medicine_type,
-//         m.dosage,
-//         m.frequency,
-//         m.duration AS medicine_duration,
-//         m.when_to_take,
-//         m.from_date,
-//         m.to_date,
-
-//         adv.advice_text,
-//         adv.date AS advice_date,
-
-//         c.complaint_no,
-//         c.complaint,
-//         c.severity,
-//         c.duration AS complaint_duration,
-//         c.date AS complaint_date,
-
-//         apt.appointment_date,
-//         apt.appointment_time,
-//         apt.status AS appointment_status,
-
-//         doc.id AS doctor_id,
-//         doc.doctor AS doctor_name,
-//         cl.id AS clinic_id,
-//         cl.clinic_name,
-
-//         pat.patient_id,
-//         pat.name AS patient_name,
-//         pat.phone_no AS patient_phone
-//       FROM tele_prescription p
-//       LEFT JOIN tele_allergies a ON p.id = a.prescription_id
-//       LEFT JOIN tele_diagnosis d ON p.id = d.prescription_id
-//       LEFT JOIN tele_medicines m ON p.id = m.prescription_id
-//       LEFT JOIN tele_advice adv ON p.id = adv.prescription_id
-//       LEFT JOIN tele_complaints c ON p.id = c.prescription_id
-//       LEFT JOIN tele_appointments apt ON p.appointment_id = apt.id
-//       LEFT JOIN tele_doctor doc ON apt.doctor_id = doc.id
-//       LEFT JOIN tele_patient pat ON apt.patient_id = pat.patient_id
-//       LEFT JOIN tele_doctor_clinic dcl ON doc.id = dcl.doctor_id
-//       LEFT JOIN tele_clinic cl ON dcl.clinic_id = cl.id
-//       WHERE 1=1
-//     `;
-
-//     const replacements = {};
-
-//     if (doctor_id) {
-//       query += ` AND doc.id = :doctor_id`;
-//       replacements.doctor_id = doctor_id;
-//     }
-
-//     if (patient_id) {
-//       query += ` AND pat.patient_id = :patient_id`;
-//       replacements.patient_id = patient_id;
-//     }
-
-//     if (appointment_id) {
-//       query += ` AND apt.id = :appointment_id`;
-//       replacements.appointment_id = appointment_id;
-//     }
-
-//     query += ` ORDER BY p.created_at DESC`;
-
-//     const results = await sequelize.query(query, {
-//       replacements,
-//       type: QueryTypes.SELECT,
-//     });
-
-//     const groupedResults = results.reduce((acc, row) => {
-//       const prescriptionId = row.prescription_id;
-//       if (!acc[prescriptionId]) {
-//         acc[prescriptionId] = {
-//           prescription: {
-//             id: row.prescription_id,
-//             appointment_id: row.appointment_id,
-//             template_id: row.template_id,
-//             next_visit: row.next_visit,
-//             referred_to: row.referred_to,
-//             investigation: row.investigation,
-//             past_medication: row.past_medication,
-//             created_at: row.prescription_created_at,
-//             updated_at: row.prescription_updated_at,
-//           },
-//           appointment: {
-//             date: row.appointment_date,
-//             time: row.appointment_time,
-//             status: row.appointment_status,
-//           },
-//           doctor: {
-//             id: row.doctor_id,
-//             name: row.doctor_name,
-//           },
-//           patient: {
-//             id: row.patient_id,
-//             name: row.patient_name,
-//             phone: row.patient_phone,
-//           },
-//           clinic: {
-//             id: row.clinic_id,
-//             name: row.clinic_name,
-//           },
-//           allergies: {
-//             medicines: row.allergy_medicines,
-//             food: row.allergy_food,
-//             others: row.allergy_others,
-//           },
-//           diagnosis: {
-//             diagnosis_no: row.diagnosis_no,
-//             diagnosis: row.diagnosis,
-//             duration: row.diagnosis_duration,
-//             date: row.diagnosis_date,
-//           },
-//           medicines: {
-//             medicine_no: row.medicine_no,
-//             name: row.medicine_name,
-//             type: row.medicine_type,
-//             dosage: row.dosage,
-//             frequency: row.frequency,
-//             duration: row.medicine_duration,
-//             when_to_take: row.when_to_take,
-//             from_date: row.from_date,
-//             to_date: row.to_date,
-//           },
-//           advice: {
-//             advice_text: row.advice_text,
-//             date: row.advice_date,
-//           },
-//           complaints: {
-//             complaint_no: row.complaint_no,
-//             complaint: row.complaint,
-//             severity: row.severity,
-//             duration: row.complaint_duration,
-//             date: row.complaint_date,
-//           },
-//         };
-//       }
-//       return acc;
-//     }, {});
-
-//     res.json({
-//       success: true,
-//       data: Object.values(groupedResults),
-//     });
-//   } catch (error) {
-//     console.error("Error fetching prescriptions:", error);
-//     res.status(500).json({
-//       success: false,
-//       error: "Failed to fetch prescriptions",
-//     });
-//   }
-// };
-
 const getPrescriptions = async (req, res) => {
   const { doctor_id, patient_id, appointment_id, latest } = req.query;
 
@@ -1117,7 +962,7 @@ const getPrescriptions = async (req, res) => {
       LEFT JOIN tele_advice adv ON p.id = adv.prescription_id
       LEFT JOIN tele_complaints c ON p.id = c.prescription_id
       LEFT JOIN tele_appointments apt ON p.appointment_id = apt.id
-      LEFT JOIN tele_doctor doc ON apt.doctor_id = doc.id
+      LEFT JOIN tele_doctor doc ON p.doctor_id = doc.id
       LEFT JOIN tele_patient pat ON apt.patient_id = pat.patient_id
       LEFT JOIN tele_doctor_clinic dcl ON doc.id = dcl.doctor_id
       LEFT JOIN tele_clinic cl ON dcl.clinic_id = cl.id
@@ -1128,7 +973,7 @@ const getPrescriptions = async (req, res) => {
     const replacements = {};
 
     if (doctor_id) {
-      query += ` AND doc.id = :doctor_id`;
+      query += ` AND p.doctor_id = :doctor_id`;
       replacements.doctor_id = doctor_id;
     }
 
@@ -1530,6 +1375,50 @@ const getAllTemplates = async (req, res) => {
   }
 };
 
+const getDoctorRecommendations = async (req, res) => {
+  const { doctor_id } = req.query;
+  if (!doctor_id) {
+    return res.status(400).json({ error: 'doctor_id is required' });
+  }
+  try {
+    // Allergies
+    const allergies = await sequelize.query(
+      `SELECT DISTINCT medicines, food, others FROM tele_allergies WHERE doctor_id = :doctor_id`,
+      { replacements: { doctor_id }, type: QueryTypes.SELECT }
+    );
+    // Diagnosis
+    const diagnosis = await sequelize.query(
+      `SELECT DISTINCT diagnosis FROM tele_diagnosis WHERE doctor_id = :doctor_id`,
+      { replacements: { doctor_id }, type: QueryTypes.SELECT }
+    );
+    // Advices
+    const advices = await sequelize.query(
+      `SELECT DISTINCT advice_text FROM tele_advice WHERE doctor_id = :doctor_id`,
+      { replacements: { doctor_id }, type: QueryTypes.SELECT }
+    );
+    // Complaints
+    const complaints = await sequelize.query(
+      `SELECT DISTINCT complaint, severity FROM tele_complaints WHERE doctor_id = :doctor_id`,
+      { replacements: { doctor_id }, type: QueryTypes.SELECT }
+    );
+    // Medicines (cumulative, no doctor filter)
+    const medicines = await sequelize.query(
+      `SELECT DISTINCT name, type FROM tele_medicines`,
+      { type: QueryTypes.SELECT }
+    );
+    res.json({
+      allergies,
+      diagnosis,
+      advices,
+      complaints,
+      medicines
+    });
+  } catch (error) {
+    console.error('Error fetching doctor recommendations:', error);
+    res.status(500).json({ error: 'Failed to fetch recommendations' });
+  }
+};
+
 module.exports = {
   addOrUpdateAllergies,
   addOrUpdateDiagnosis,
@@ -1545,4 +1434,5 @@ module.exports = {
   getPrescriptionById,
   getAllTemplates,
   uploadPrescription,
+  getDoctorRecommendations,
 };

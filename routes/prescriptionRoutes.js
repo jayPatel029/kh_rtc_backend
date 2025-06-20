@@ -15,6 +15,7 @@ router.post('/create', prescriptionController.saveOrUpdateCompletePrescription);
 
 router.post('/upload', prescriptionController.uploadPrescription);
 
+router.get('/getDoctorRecc', prescriptionController.getDoctorRecommendations);
 
 router.post('/uploadAdvices', upload.single('file'),prescriptionController.uploadAdvices);
 router.get('/getAdvices', prescriptionController.getEnglishAdvices);

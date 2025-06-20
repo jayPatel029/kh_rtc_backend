@@ -215,9 +215,12 @@ const createAllergiesTable = async () => {
         medicines TEXT NULL,
         food TEXT NULL,
         others TEXT NULL,
+        doctor_id INT NULL,
         FOREIGN KEY (patient_id) REFERENCES tele_patient(patient_id) ON DELETE CASCADE,
         FOREIGN KEY (appointment_id) REFERENCES tele_appointments(id) ON DELETE CASCADE,
-        FOREIGN KEY (prescription_id) REFERENCES tele_prescription(id) ON DELETE CASCADE
+        FOREIGN KEY (prescription_id) REFERENCES tele_prescription(id) ON DELETE CASCADE,
+        FOREIGN KEY (doctor_id) REFERENCES tele_doctor(id) ON DELETE CASCADE
+
       );
     `;
     await sequelize.query(query);
@@ -238,6 +241,8 @@ const createDiagnosisTable = async () => {
         diagnosis TEXT NULL,
         duration VARCHAR(100) NULL,
         date DATE NULL,
+        doctor_id INT NULL,
+        FOREIGN KEY (doctor_id) REFERENCES tele_doctor(id) ON DELETE CASCADE,
         FOREIGN KEY (appointment_id) REFERENCES tele_appointments(id) ON DELETE CASCADE,
         FOREIGN KEY (prescription_id) REFERENCES tele_prescription(id) ON DELETE CASCADE
       );
@@ -265,6 +270,8 @@ const createMedicinesTable = async () => {
         when_to_take VARCHAR(100) NULL,
         from_date DATE NULL,
         to_date DATE NULL,
+        doctor_id INT NULL,
+        FOREIGN KEY (doctor_id) REFERENCES tele_doctor(id) ON DELETE CASCADE,
         FOREIGN KEY (appointment_id) REFERENCES tele_appointments(id) ON DELETE CASCADE,
         FOREIGN KEY (prescription_id) REFERENCES tele_prescription(id) ON DELETE CASCADE
       );
@@ -291,7 +298,6 @@ const createAdviceTable = async () => {
         FOREIGN KEY (prescription_id) REFERENCES tele_prescription(id) ON DELETE CASCADE,
         FOREIGN KEY (doctor_id) REFERENCES tele_doctor(id) ON DELETE CASCADE,
         FOREIGN KEY (clinic_id) REFERENCES tele_clinic(id) ON DELETE CASCADE
-
       );
     `;
     await sequelize.query(query);
@@ -313,6 +319,8 @@ const createComplaintsTable = async () => {
         severity VARCHAR(50) NULL,
         duration VARCHAR(100) NULL,
         date DATE NULL,
+        doctor_id INT NULL,
+        FOREIGN KEY (doctor_id) REFERENCES tele_doctor(id) ON DELETE CASCADE,
         FOREIGN KEY (appointment_id) REFERENCES tele_appointments(id) ON DELETE CASCADE,
         FOREIGN KEY (prescription_id) REFERENCES tele_prescription(id) ON DELETE CASCADE
       );
@@ -343,24 +351,6 @@ const createPatientClinicTable = async () => {
   }
 };
 
-// const createPrescriptionTable = async () => {
-//   try {
-//     const query = `
-//       CREATE TABLE IF NOT EXISTS tele_prescription (
-//         id INT AUTO_INCREMENT PRIMARY KEY,
-//         appointment_id INT NULL,
-//         template_id VARCHAR(50) NULL,
-//         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-//         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-//         FOREIGN KEY (appointment_id) REFERENCES tele_appointments(id) ON DELETE CASCADE
-//       );
-//     `;
-//     await sequelize.query(query);
-//     console.log("tele_prescription table created successfully");
-//   } catch (error) {
-//     console.error("Error creating tele_prescription table:", error);
-//   }
-// };
 
 const createPrescriptionTable = async () => {
   try {
@@ -378,6 +368,8 @@ const createPrescriptionTable = async () => {
         past_medication TEXT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        doctor_id INT NULL,
+        FOREIGN KEY (doctor_id) REFERENCES tele_doctor(id) ON DELETE CASCADE,
         FOREIGN KEY (appointment_id) REFERENCES tele_appointments(id) ON DELETE CASCADE
       );
     `;
@@ -571,9 +563,6 @@ CREATE TABLE IF NOT EXISTS tele_chat_messages (
     console.error("Error creating tele_chat_messages table:", error);
   }
 };
-
-
-
 
 // Function to create all tables in the correct order
 const createAllTables = async () => {
