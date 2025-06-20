@@ -298,9 +298,9 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
   try {
     // Fetch doctor_id from tele_appointments
     const [appointment] = await sequelize.query(
-      'SELECT doctor_id FROM tele_appointments WHERE id = ?',
+      'SELECT doctor_id FROM tele_appointments WHERE id = :appointment_id',
       {
-        replacements: [appointment_id],
+        replacements: { appointment_id },
         type: sequelize.QueryTypes.SELECT,
       }
     );
@@ -312,61 +312,89 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
     const result = await sequelize.transaction(async (t) => {
       // Step 1: Upsert Prescription
       const [existingPrescription] = await sequelize.query(
-        'SELECT id FROM tele_prescription WHERE appointment_id = ?',
+        'SELECT id FROM tele_prescription WHERE appointment_id = :appointment_id',
         {
-          replacements: [appointment_id],
+          replacements: { appointment_id },
           type: sequelize.QueryTypes.SELECT,
           transaction: t,
         }
       );
 
       let prescriptionId;
-      if (existingPrescription) {
+      let isUpdate = false;
+      if (existingPrescription && existingPrescription.id) {
         prescriptionId = existingPrescription.id;
+        isUpdate = true;
         await sequelize.query(
           `UPDATE tele_prescription
-           SET template_id = ?, 
-               template_name = ?,
-               template_description = ?,
-               next_visit = ?, 
-               referred_to = ?, 
-               investigation = ?, 
-               past_medication = ?,
-               doctor_id = ?
-           WHERE id = ?`,
+           SET template_id = :template_id, 
+               template_name = :template_name,
+               template_description = :template_description,
+               next_visit = :next_visit, 
+               referred_to = :referred_to, 
+               investigation = :investigation, 
+               past_medication = :past_medication,
+               doctor_id = :doctor_id
+           WHERE id = :prescriptionId`,
           {
-            replacements: [
-              template_id || null,
-              template_id ? template_name : null,
-              template_id ? template_description : null,
-              next_visit || null,
-              referred_to ? JSON.stringify(referred_to) : null,
-              investigation || null,
-              past_medication || null,
+            replacements: {
+              template_id: template_id || null,
+              template_name: template_id ? template_name : null,
+              template_description: template_id ? template_description : null,
+              next_visit: next_visit || null,
+              referred_to: referred_to ? JSON.stringify(referred_to) : null,
+              investigation: investigation || null,
+              past_medication: past_medication || null,
               doctor_id,
               prescriptionId,
-            ],
+            },
             type: sequelize.QueryTypes.UPDATE,
             transaction: t,
           }
         );
+        // Delete all related data for this prescription before inserting new
+        await sequelize.query('DELETE FROM tele_allergies WHERE prescription_id = :prescriptionId', {
+          replacements: { prescriptionId },
+          type: sequelize.QueryTypes.DELETE,
+          transaction: t,
+        });
+        await sequelize.query('DELETE FROM tele_diagnosis WHERE prescription_id = :prescriptionId', {
+          replacements: { prescriptionId },
+          type: sequelize.QueryTypes.DELETE,
+          transaction: t,
+        });
+        await sequelize.query('DELETE FROM tele_medicines WHERE prescription_id = :prescriptionId', {
+          replacements: { prescriptionId },
+          type: sequelize.QueryTypes.DELETE,
+          transaction: t,
+        });
+        await sequelize.query('DELETE FROM tele_advice WHERE prescription_id = :prescriptionId', {
+          replacements: { prescriptionId },
+          type: sequelize.QueryTypes.DELETE,
+          transaction: t,
+        });
+        await sequelize.query('DELETE FROM tele_complaints WHERE prescription_id = :prescriptionId', {
+          replacements: { prescriptionId },
+          type: sequelize.QueryTypes.DELETE,
+          transaction: t,
+        });
       } else {
         const [insertResult] = await sequelize.query(
           `INSERT INTO tele_prescription 
             (appointment_id, template_id, template_name, template_description, next_visit, referred_to, investigation, past_medication, doctor_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           VALUES (:appointment_id, :template_id, :template_name, :template_description, :next_visit, :referred_to, :investigation, :past_medication, :doctor_id)`,
           {
-            replacements: [
+            replacements: {
               appointment_id,
-              template_id || null,
-              template_id ? template_name : null,
-              template_id ? template_description : null,
-              next_visit || null,
-              referred_to ? JSON.stringify(referred_to) : null,
-              investigation || null,
-              past_medication || null,
+              template_id: template_id || null,
+              template_name: template_id ? template_name : null,
+              template_description: template_id ? template_description : null,
+              next_visit: next_visit || null,
+              referred_to: referred_to ? JSON.stringify(referred_to) : null,
+              investigation: investigation || null,
+              past_medication: past_medication || null,
               doctor_id,
-            ],
+            },
             type: sequelize.QueryTypes.INSERT,
             transaction: t,
           }
@@ -374,43 +402,20 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
         prescriptionId = insertResult;
       }
 
-      // Step 2: Allergies
+      // Step 2: Allergies (array, single object, or undefined)
       if (allergies) {
-        const [existing] = await sequelize.query(
-          'SELECT id FROM tele_allergies WHERE prescription_id = ?',
-          {
-            replacements: [prescriptionId],
-            type: sequelize.QueryTypes.SELECT,
-            transaction: t,
-          }
-        );
-
-        if (existing) {
+        const allergiesArray = Array.isArray(allergies) ? allergies : [allergies];
+        for (const allergy of allergiesArray) {
           await sequelize.query(
-            'UPDATE tele_allergies SET medicines = ?, food = ?, others = ?, doctor_id = ? WHERE prescription_id = ?',
+            'INSERT INTO tele_allergies (prescription_id, medicines, food, others, doctor_id) VALUES (:prescriptionId, :medicines, :food, :others, :doctor_id)',
             {
-              replacements: [
-                allergies.medicines,
-                allergies.food,
-                allergies.others,
-                doctor_id,
+              replacements: {
                 prescriptionId,
-              ],
-              type: sequelize.QueryTypes.UPDATE,
-              transaction: t,
-            }
-          );
-        } else {
-          await sequelize.query(
-            'INSERT INTO tele_allergies (prescription_id, medicines, food, others, doctor_id) VALUES (?, ?, ?, ?, ?)',
-            {
-              replacements: [
-                prescriptionId,
-                allergies.medicines,
-                allergies.food,
-                allergies.others,
+                medicines: allergy.medicines,
+                food: allergy.food,
+                others: allergy.others,
                 doctor_id,
-              ],
+              },
               type: sequelize.QueryTypes.INSERT,
               transaction: t,
             }
@@ -418,45 +423,21 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
         }
       }
 
-      // Step 3: Diagnosis
+      // Step 3: Diagnosis (array, single object, or undefined)
       if (diagnosis) {
-        const [existing] = await sequelize.query(
-          'SELECT id FROM tele_diagnosis WHERE prescription_id = ?',
-          {
-            replacements: [prescriptionId],
-            type: sequelize.QueryTypes.SELECT,
-            transaction: t,
-          }
-        );
-
-        if (existing) {
+        const diagnosisArray = Array.isArray(diagnosis) ? diagnosis : [diagnosis];
+        for (const diag of diagnosisArray) {
           await sequelize.query(
-            'UPDATE tele_diagnosis SET diagnosis_no = ?, diagnosis = ?, duration = ?, date = ?, doctor_id = ? WHERE prescription_id = ?',
+            'INSERT INTO tele_diagnosis (prescription_id, diagnosis_no, diagnosis, duration, date, doctor_id) VALUES (:prescriptionId, :diagnosis_no, :diagnosis, :duration, :date, :doctor_id)',
             {
-              replacements: [
-                diagnosis.diagnosis_no,
-                diagnosis.diagnosis,
-                diagnosis.duration,
-                diagnosis.date,
-                doctor_id,
+              replacements: {
                 prescriptionId,
-              ],
-              type: sequelize.QueryTypes.UPDATE,
-              transaction: t,
-            }
-          );
-        } else {
-          await sequelize.query(
-            'INSERT INTO tele_diagnosis (prescription_id, diagnosis_no, diagnosis, duration, date, doctor_id) VALUES (?, ?, ?, ?, ?, ?)',
-            {
-              replacements: [
-                prescriptionId,
-                diagnosis.diagnosis_no,
-                diagnosis.diagnosis,
-                diagnosis.duration,
-                diagnosis.date,
+                diagnosis_no: diag.diagnosis_no,
+                diagnosis: diag.diagnosis,
+                duration: diag.duration,
+                date: diag.date,
                 doctor_id,
-              ],
+              },
               type: sequelize.QueryTypes.INSERT,
               transaction: t,
             }
@@ -464,55 +445,26 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
         }
       }
 
-      // Step 4: Medicines
+      // Step 4: Medicines (array, single object, or undefined)
       if (medicines) {
-        const [existing] = await sequelize.query(
-          'SELECT id FROM tele_medicines WHERE prescription_id = ?',
-          {
-            replacements: [prescriptionId],
-            type: sequelize.QueryTypes.SELECT,
-            transaction: t,
-          }
-        );
-
-        if (existing) {
+        const medsArray = Array.isArray(medicines) ? medicines : [medicines];
+        for (const med of medsArray) {
           await sequelize.query(
-            'UPDATE tele_medicines SET medicine_no = ?, name = ?, type = ?, dosage = ?, frequency = ?, duration = ?, when_to_take = ?, from_date = ?, to_date = ?, doctor_id = ? WHERE prescription_id = ?',
+            'INSERT INTO tele_medicines (prescription_id, medicine_no, name, type, dosage, frequency, duration, when_to_take, from_date, to_date, doctor_id) VALUES (:prescriptionId, :medicine_no, :name, :type, :dosage, :frequency, :duration, :when_to_take, :from_date, :to_date, :doctor_id)',
             {
-              replacements: [
-                medicines.medicine_no,
-                medicines.name,
-                medicines.type,
-                medicines.dosage,
-                medicines.frequency,
-                medicines.duration,
-                medicines.when_to_take,
-                medicines.from_date,
-                medicines.to_date,
-                doctor_id,
+              replacements: {
                 prescriptionId,
-              ],
-              type: sequelize.QueryTypes.UPDATE,
-              transaction: t,
-            }
-          );
-        } else {
-          await sequelize.query(
-            'INSERT INTO tele_medicines (prescription_id, medicine_no, name, type, dosage, frequency, duration, when_to_take, from_date, to_date, doctor_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            {
-              replacements: [
-                prescriptionId,
-                medicines.medicine_no,
-                medicines.name,
-                medicines.type,
-                medicines.dosage,
-                medicines.frequency,
-                medicines.duration,
-                medicines.when_to_take,
-                medicines.from_date,
-                medicines.to_date,
+                medicine_no: med.medicine_no,
+                name: med.name,
+                type: med.type,
+                dosage: med.dosage,
+                frequency: med.frequency,
+                duration: med.duration,
+                when_to_take: med.when_to_take,
+                from_date: med.from_date,
+                to_date: med.to_date,
                 doctor_id,
-              ],
+              },
               type: sequelize.QueryTypes.INSERT,
               transaction: t,
             }
@@ -520,31 +472,19 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
         }
       }
 
-      // Step 5: Advice
+      // Step 5: Advice (array, single object, or undefined)
       if (advice) {
-        const [existing] = await sequelize.query(
-          'SELECT id FROM tele_advice WHERE prescription_id = ?',
-          {
-            replacements: [prescriptionId],
-            type: sequelize.QueryTypes.SELECT,
-            transaction: t,
-          }
-        );
-
-        if (existing) {
+        const adviceArray = Array.isArray(advice) ? advice : [advice];
+        for (const adv of adviceArray) {
           await sequelize.query(
-            'UPDATE tele_advice SET advice_text = ?, date = ?, doctor_id = ? WHERE prescription_id = ?',
+            'INSERT INTO tele_advice (prescription_id, advice_text, date, doctor_id) VALUES (:prescriptionId, :advice_text, :date, :doctor_id)',
             {
-              replacements: [advice.advice_text, advice.date, doctor_id, prescriptionId],
-              type: sequelize.QueryTypes.UPDATE,
-              transaction: t,
-            }
-          );
-        } else {
-          await sequelize.query(
-            'INSERT INTO tele_advice (prescription_id, advice_text, date, doctor_id) VALUES (?, ?, ?, ?)',
-            {
-              replacements: [prescriptionId, advice.advice_text, advice.date, doctor_id],
+              replacements: {
+                prescriptionId,
+                advice_text: adv.advice_text,
+                date: adv.date,
+                doctor_id,
+              },
               type: sequelize.QueryTypes.INSERT,
               transaction: t,
             }
@@ -552,47 +492,22 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
         }
       }
 
-      // Step 6: Complaints
+      // Step 6: Complaints (array, single object, or undefined)
       if (complaints) {
-        const [existing] = await sequelize.query(
-          'SELECT id FROM tele_complaints WHERE prescription_id = ?',
-          {
-            replacements: [prescriptionId],
-            type: sequelize.QueryTypes.SELECT,
-            transaction: t,
-          }
-        );
-
-        if (existing) {
+        const complaintsArray = Array.isArray(complaints) ? complaints : [complaints];
+        for (const comp of complaintsArray) {
           await sequelize.query(
-            'UPDATE tele_complaints SET complaint_no = ?, complaint = ?, severity = ?, duration = ?, date = ?, doctor_id = ? WHERE prescription_id = ?',
+            'INSERT INTO tele_complaints (prescription_id, complaint_no, complaint, severity, duration, date, doctor_id) VALUES (:prescriptionId, :complaint_no, :complaint, :severity, :duration, :date, :doctor_id)',
             {
-              replacements: [
-                complaints.complaint_no,
-                complaints.complaint,
-                complaints.severity,
-                complaints.duration,
-                complaints.date,
-                doctor_id,
+              replacements: {
                 prescriptionId,
-              ],
-              type: sequelize.QueryTypes.UPDATE,
-              transaction: t,
-            }
-          );
-        } else {
-          await sequelize.query(
-            'INSERT INTO tele_complaints (prescription_id, complaint_no, complaint, severity, duration, date, doctor_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            {
-              replacements: [
-                prescriptionId,
-                complaints.complaint_no,
-                complaints.complaint,
-                complaints.severity,
-                complaints.duration,
-                complaints.date,
+                complaint_no: comp.complaint_no,
+                complaint: comp.complaint,
+                severity: comp.severity,
+                duration: comp.duration,
+                date: comp.date,
                 doctor_id,
-              ],
+              },
               type: sequelize.QueryTypes.INSERT,
               transaction: t,
             }
@@ -608,6 +523,7 @@ const saveOrUpdateCompletePrescription = async (req, res) => {
       prescription_id: result,
     });
   } catch (error) {
+    // If any error occurs, the transaction is rolled back automatically by sequelize.transaction
     res.status(500).json({ error: error.message });
   }
 };
@@ -1401,9 +1317,8 @@ const getDoctorRecommendations = async (req, res) => {
       `SELECT DISTINCT complaint, severity FROM tele_complaints WHERE doctor_id = :doctor_id`,
       { replacements: { doctor_id }, type: QueryTypes.SELECT }
     );
-    // Medicines (cumulative, no doctor filter)
     const medicines = await sequelize.query(
-      `SELECT DISTINCT name, type FROM tele_medicines`,
+      `SELECT DISTINCT name  FROM tele_medicines`,
       { type: QueryTypes.SELECT }
     );
     res.json({
