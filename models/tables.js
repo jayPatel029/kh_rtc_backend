@@ -156,7 +156,7 @@ const createappointmentsTable = async () => {
         service VARCHAR(255) NULL,
         unit_price VARCHAR(255) NULL,
         discount VARCHAR(255) NULL DEFAULT 0,
-        status ENUM('BOOKED', 'ARRIVED', 'PENDING', 'COMPLETED', 'MISSED') DEFAULT 'PENDING',
+        status ENUM('BOOKED', 'ARRIVED', 'PENDING', 'COMPLETED', 'MISSED', 'IN_PROGRESS') DEFAULT 'PENDING',
         token_id VARCHAR(50) NULL,
         appointment_type ENUM('online', 'in_clinic') NOT NULL DEFAULT 'in_clinic',
         payment_action ENUM('PAID', 'PENDING') NULL DEFAULT 'PENDING',
